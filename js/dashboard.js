@@ -83,6 +83,86 @@ function populateMonthSelect() {
   return keys[0];
 }
 
+/** Monthly totals (Gasto only) for movimientos matching predicate, keyed by monthKey. */
+function monthlyTotals(predicate) {
+  const out = {};
+  for (const m of movimientos) {
+    if (m.tipo !== "Gasto" || !predicate(m)) continue;
+    const key = monthKey(m);
+    out[key] = (out[key] || 0) + Math.abs(m.monto);
+  }
+  return out;
+}
+
+/** Small 6-bar sparkline (with month labels) as an HTML string. */
+function buildSparklineHTML(sixMonths, totalsByMonth) {
+  const vals = sixMonths.map((k) => totalsByMonth[k] || 0);
+  const max = Math.max(...vals, 1);
+  return sixMonths
+    .map((k, i) => {
+      const [, mo] = k.split("-");
+      const heightPct = Math.max(4, Math.round((vals[i] / max) * 100));
+      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
+        <div style="width:100%;height:36px;display:flex;align-items:flex-end;">
+          <div style="width:100%;background:var(--series-1);border-radius:3px 3px 0 0;height:${heightPct}%;"></div>
+        </div>
+        <div style="font-size:9px;color:var(--text-muted);">${MESES[Number(mo)]}</div>
+      </div>`;
+    })
+    .join("");
+}
+
+const escapeAttr = (s) => String(s).replace(/"/g, "&quot;");
+
+/** A clickable subcategory row; its own 6-month sparkline + transaction list build lazily on first click. */
+function buildSubcategoryRow(cat, sub, subMonto, selectedKey) {
+  const rowId = `sub-${cat}-${sub}`.replace(/[^a-zA-Z0-9]/g, "");
+  return `
+    <div class="category-row-top cat-clickable sub-clickable" data-cat="${escapeAttr(cat)}" data-sub="${escapeAttr(sub)}" data-key="${selectedKey}" data-target="${rowId}" style="padding:8px 0;font-size:13px;">
+      <span style="color:var(--text-secondary)">${sub}</span>
+      <span class="cat-amounts">${fmtCLP(subMonto)}</span>
+    </div>
+    <div class="sub-detail" id="${rowId}" hidden></div>`;
+}
+
+function wireSubcategoryToggles(scope) {
+  scope.querySelectorAll(".sub-clickable").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation(); // don't also toggle the parent category
+      const detail = document.getElementById(el.dataset.target);
+      const willOpen = detail.hidden;
+      detail.hidden = !detail.hidden;
+      if (willOpen && !detail.dataset.loaded) {
+        detail.dataset.loaded = "1";
+        const { cat, sub, key } = el.dataset;
+        const sparkline = buildSparklineHTML(
+          monthsBackFrom(key, 6),
+          monthlyTotals((m) => m.categoria === cat && (m.subcategoria || "(sin subcategoría)") === sub)
+        );
+        const items = movimientos
+          .filter(
+            (m) =>
+              m.tipo === "Gasto" &&
+              m.categoria === cat &&
+              (m.subcategoria || "(sin subcategoría)") === sub &&
+              monthKey(m) === key
+          )
+          .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))
+          .map(
+            (m) => `<div class="category-row-top" style="padding:5px 0;font-size:12px;">
+              <span style="color:var(--text-muted)">${formatFechaCorta(m.fecha)} · ${m.detalle || "—"}</span>
+              <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
+            </div>`
+          )
+          .join("");
+        detail.innerHTML = `
+          <div style="display:flex;gap:5px;margin:8px 0;">${sparkline}</div>
+          ${items || '<div class="skeleton" style="padding:6px 0;font-size:12px;">Sin movimientos este mes</div>'}`;
+      }
+    });
+  });
+}
+
 function renderStats(selectedKey) {
   const inMonth = movimientos.filter((m) => monthKey(m) === selectedKey);
   const ingresos = inMonth.filter((m) => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
@@ -107,46 +187,27 @@ function renderStats(selectedKey) {
   if (sorted.length === 0) {
     list.innerHTML = '<div class="skeleton">Sin gastos este mes</div>';
   }
-  // Totales mensuales por categoría (para la mini-tendencia de 6 meses al expandir).
-  const monthlyByCat = {};
-  for (const m of movimientos) {
-    if (m.tipo !== "Gasto") continue;
-    (monthlyByCat[m.categoria] ||= {});
-    const key = monthKey(m);
-    monthlyByCat[m.categoria][key] = (monthlyByCat[m.categoria][key] || 0) + Math.abs(m.monto);
-  }
-
   for (const [cat, monto] of sorted) {
     const meta = presupuesto[cat];
     const pct = meta ? Math.round((monto / meta) * 100) : null;
     const row = document.createElement("div");
     row.className = "category-row";
 
-    const sixMonths = monthsBackFrom(selectedKey, 6);
-    const sixVals = sixMonths.map((k) => (monthlyByCat[cat] || {})[k] || 0);
-    const sixMax = Math.max(...sixVals, 1);
-    const sparkline = sixMonths
-      .map((k, i) => {
-        const [, mo] = k.split("-");
-        const heightPct = Math.max(4, Math.round((sixVals[i] / sixMax) * 100));
-        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
-          <div style="width:100%;height:36px;display:flex;align-items:flex-end;">
-            <div style="width:100%;background:var(--series-1);border-radius:3px 3px 0 0;height:${heightPct}%;"></div>
-          </div>
-          <div style="font-size:9px;color:var(--text-muted);">${MESES[Number(mo)]}</div>
-        </div>`;
-      })
-      .join("");
+    const sparkline = buildSparklineHTML(
+      monthsBackFrom(selectedKey, 6),
+      monthlyTotals((m) => m.categoria === cat)
+    );
 
-    const detailRows = movimientos
-      .filter((m) => m.tipo === "Gasto" && m.categoria === cat && monthKey(m) === selectedKey)
-      .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))
-      .map(
-        (m) => `<div class="category-row-top" style="padding:6px 0;font-size:13px;">
-          <span style="color:var(--text-secondary)">${formatFechaCorta(m.fecha)} · ${m.detalle || m.subcategoria || "—"}</span>
-          <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
-        </div>`
-      )
+    // Subcategorías de esta categoría, en el mes seleccionado.
+    const bySub = {};
+    for (const m of inMonth) {
+      if (m.tipo !== "Gasto" || m.categoria !== cat) continue;
+      const sub = m.subcategoria || "(sin subcategoría)";
+      bySub[sub] = (bySub[sub] || 0) + Math.abs(m.monto);
+    }
+    const subRows = Object.entries(bySub)
+      .sort((a, b) => b[1] - a[1])
+      .map(([sub, subMonto]) => buildSubcategoryRow(cat, sub, subMonto, selectedKey))
       .join("");
 
     row.innerHTML = `
@@ -157,13 +218,13 @@ function renderStats(selectedKey) {
       ${meta ? `<div class="bar-track"><div class="bar-fill${pct > 100 ? " over" : ""}" style="width:${Math.min(pct, 100)}%"></div></div>` : ""}
       <div class="cat-detail" hidden>
         <div style="display:flex;gap:6px;margin-top:12px;">${sparkline}</div>
-        <div style="margin-top:10px;">${detailRows || '<div class="skeleton" style="padding:8px 0;">Sin movimientos este mes</div>'}</div>
+        <div style="margin-top:12px;">${subRows || '<div class="skeleton" style="padding:8px 0;">Sin movimientos este mes</div>'}</div>
       </div>`;
 
     row.querySelector(".cat-clickable").addEventListener("click", () => {
-      const detail = row.querySelector(".cat-detail");
-      detail.hidden = !detail.hidden;
+      row.querySelector(".cat-detail").hidden = !row.querySelector(".cat-detail").hidden;
     });
+    wireSubcategoryToggles(row);
     list.appendChild(row);
   }
 

@@ -138,6 +138,8 @@ header.topbar h1 { font-size: 19px; margin: 0; font-weight: 700; letter-spacing:
 .category-row-top .cat-amounts .meta { color: var(--text-muted); }
 .cat-clickable { cursor: pointer; }
 .cat-clickable .cat-name::after { content: " ▾"; color: var(--text-muted); font-size: 11px; }
+.sub-clickable::before { content: "▾ "; color: var(--text-muted); font-size: 10px; }
+.sub-detail { margin-left: 10px; padding-left: 10px; border-left: 2px solid var(--grid); }
 
 .bar-track { height: 6px; border-radius: 4px; background: var(--surface-2); overflow: hidden; margin-top: 7px; }
 .bar-fill { height: 100%; border-radius: 4px; background: var(--series-1); }
