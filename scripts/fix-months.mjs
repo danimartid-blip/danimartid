@@ -19,8 +19,15 @@ async function main() {
   let fixed = 0;
   const values = fechas.map(([fecha]) => {
     if (!fecha) return ["", ""];
-    const [dd, mm, yyyy] = String(fecha).split("/");
-    if (!dd || !mm || !yyyy) return ["", ""];
+    const s = String(fecha).trim();
+    // Historical rows: DD/MM/YYYY. Rows written by the app's <input type="date">: YYYY-MM-DD.
+    const slash = s.split("/");
+    const dash = s.split("-");
+    let yyyy, mm;
+    if (slash.length === 3) [, mm, yyyy] = slash;
+    else if (dash.length === 3) [yyyy, mm] = dash;
+    else return ["", ""];
+    if (!mm || !yyyy) return ["", ""];
     fixed++;
     return [yyyy, String(Number(mm))];
   });
