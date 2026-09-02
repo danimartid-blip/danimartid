@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Registrar — Finanzas</title>
+<meta name="theme-color" content="#3d6b5c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1>Registrar</h1>
+</header>
+
+<div class="container">
+
+  <div id="loginGate" class="login-gate" hidden>
+    <div>
+      <h2>Conecta tu Google</h2>
+      <p style="color:var(--text-muted)">Para leer y guardar en tu planilla de finanzas.</p>
+    </div>
+    <button class="btn-primary" id="loginBtn">Conectar con Google</button>
+  </div>
+
+  <form id="form" class="card" hidden>
+    <div>
+      <label>Tipo</label>
+      <div class="type-toggle" id="tipoToggle">
+        <button type="button" data-type="Gasto" class="active">Gasto</button>
+        <button type="button" data-type="Ingreso">Ingreso</button>
+      </div>
+    </div>
+
+    <label for="monto">Monto</label>
+    <input type="number" inputmode="numeric" id="monto" placeholder="0" required>
+
+    <label for="fecha">Fecha</label>
+    <input type="date" id="fecha" required>
+
+    <label for="categoria">Categoría</label>
+    <input type="text" id="categoria" list="categoriaList" autocomplete="off" required>
+    <datalist id="categoriaList"></datalist>
+
+    <label for="subcategoria">Subcategoría</label>
+    <input type="text" id="subcategoria" list="subcategoriaList" autocomplete="off">
+    <datalist id="subcategoriaList"></datalist>
+
+    <label for="medioPago">Medio de pago</label>
+    <input type="text" id="medioPago" list="medioPagoList" autocomplete="off">
+    <datalist id="medioPagoList"></datalist>
+
+    <div>
+      <label>Estado</label>
+      <div class="type-toggle" id="estadoToggle">
+        <button type="button" data-estado="Pagado" class="active">Pagado</button>
+        <button type="button" data-estado="Por pagar">Por pagar</button>
+      </div>
+    </div>
+
+    <label for="detalle">Detalle</label>
+    <input type="text" id="detalle" placeholder="Ej: Supermercado Lider" autocomplete="off">
+
+    <button type="button" class="btn-link" id="toggleCuota">+ ¿Es una cuota?</button>
+    <div class="advanced-section" id="cuotaSection" hidden>
+      <label for="cuotasTotales">Cuotas totales</label>
+      <input type="number" id="cuotasTotales" inputmode="numeric">
+
+      <label for="cuotaDevengada">Cuota actual (Nº)</label>
+      <input type="number" id="cuotaDevengada" inputmode="numeric">
+
+      <label for="mesPagoOpcion">Mes pago opción</label>
+      <input type="text" id="mesPagoOpcion" autocomplete="off">
+
+      <label for="fechaVencimiento">Fecha de vencimiento</label>
+      <input type="date" id="fechaVencimiento">
+    </div>
+
+    <button type="submit" class="btn-primary" id="submitBtn">Guardar</button>
+  </form>
+
+  <div id="loadingSkeleton" class="skeleton" hidden>Cargando…</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<nav class="tabbar">
+  <a href="index.html">Dashboard</a>
+  <a href="registro.html" class="active">Registrar</a>
+</nav>
+
+<script src="js/config.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="js/sheets-auth.js"></script>
+<script src="js/registro.js"></script>
+</body>
+</html>

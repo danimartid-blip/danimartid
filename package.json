@@ -1,0 +1,11 @@
+{
+  "name": "danimartid-finanzas",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "migrate": "node scripts/migrate.mjs"
+  },
+  "dependencies": {
+    "googleapis": "^144.0.0"
+  }
+}

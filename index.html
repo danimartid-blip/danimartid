@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dashboard — Finanzas</title>
+<meta name="theme-color" content="#3d6b5c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1>Finanzas</h1>
+  <select id="monthSelect" class="native" style="width:auto;padding:8px 10px;font-size:14px;"></select>
+</header>
+
+<div class="container">
+
+  <div id="loginGate" class="login-gate" hidden>
+    <div>
+      <h2>Conecta tu Google</h2>
+      <p style="color:var(--text-muted)">Para ver tus finanzas en vivo.</p>
+    </div>
+    <button class="btn-primary" id="loginBtn">Conectar con Google</button>
+  </div>
+
+  <div id="loadingSkeleton" class="skeleton" hidden>Cargando tus datos…</div>
+
+  <div id="dashboard" hidden>
+    <div class="grid-2">
+      <div class="card">
+        <div class="stat-label">Ingresos</div>
+        <div class="stat-value income" id="statIngresos">$0</div>
+      </div>
+      <div class="card">
+        <div class="stat-label">Gastos</div>
+        <div class="stat-value expense" id="statGastos">$0</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="stat-label">Balance del mes</div>
+      <div class="stat-value" id="statNeto">$0</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-label" style="margin-bottom:8px;">Tendencia (últimos meses)</div>
+      <svg id="trendChart" width="100%" height="120" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
+    </div>
+
+    <div class="card">
+      <div class="stat-label" style="margin-bottom:8px;">Gasto por categoría vs. presupuesto</div>
+      <div id="categoryList"></div>
+    </div>
+
+    <div class="card">
+      <div class="stat-label">Por pagar (pendiente)</div>
+      <div class="stat-value warn" id="statPorPagar">$0</div>
+    </div>
+  </div>
+</div>
+
+<nav class="tabbar">
+  <a href="index.html" class="active">Dashboard</a>
+  <a href="registro.html">Registrar</a>
+</nav>
+
+<script src="js/config.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="js/sheets-auth.js"></script>
+<script src="js/dashboard.js"></script>
+</body>
+</html>
