@@ -25,7 +25,31 @@ function parseMovimientos(rows) {
       estado: r[7] || "",
       monto: Number(r[8]) || 0,
       detalle: r[9] || "",
+      fechaVencimiento: r[10] || "",
     }));
+}
+
+/** Parses DD/MM/YYYY or DD-MM-YYYY into a Date (or null). */
+function parseFechaVenc(s) {
+  if (!s) return null;
+  const parts = String(s).trim().split(/[-/]/);
+  if (parts.length !== 3) return null;
+  const [d, m, y] = parts.map(Number);
+  if (!d || !m || !y) return null;
+  const date = new Date(y, m - 1, d);
+  return isNaN(date) ? null : date;
+}
+
+function daysUntil(date) {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  return Math.round((date.getTime() - startOfToday.getTime()) / 86400000);
+}
+
+function vencimientoLabel(days) {
+  if (days < 0) return `vencido hace ${-days}d`;
+  if (days === 0) return "vence hoy";
+  return `vence en ${days}d`;
 }
 
 function monthKey(m) {
@@ -85,10 +109,64 @@ function renderStats(selectedKey) {
   }
 
   // Por pagar (global, no filtrado por mes)
-  const porPagar = movimientos
-    .filter((m) => m.estado === "Por pagar")
-    .reduce((s, m) => s + Math.abs(m.monto), 0);
+  const pendientes = movimientos.filter((m) => m.estado === "Por pagar");
+  const porPagar = pendientes.reduce((s, m) => s + Math.abs(m.monto), 0);
   $("statPorPagar").textContent = fmtCLP(porPagar);
+
+  // Liquidez neta = saldo en cuentas - lo pendiente por pagar
+  const totalCuentas = cuentas.reduce((s, c) => s + c.saldo, 0);
+  const liquidezEl = $("statLiquidez");
+  const liquidez = totalCuentas - porPagar;
+  liquidezEl.textContent = fmtCLP(liquidez);
+  liquidezEl.className = "stat-value " + (liquidez >= 0 ? "income" : "expense");
+
+  renderPorPagarDetail(pendientes);
+}
+
+function renderPorPagarDetail(pendientes) {
+  const withDate = pendientes
+    .map((m) => ({ ...m, venc: parseFechaVenc(m.fechaVencimiento) }))
+    .filter((m) => m.venc);
+
+  // Por período (mes de vencimiento)
+  const byPeriod = {};
+  for (const m of withDate) {
+    const key = `${m.venc.getFullYear()}-${String(m.venc.getMonth() + 1).padStart(2, "0")}`;
+    byPeriod[key] = (byPeriod[key] || 0) + Math.abs(m.monto);
+  }
+  const periodosEl = $("porPagarPeriodos");
+  periodosEl.innerHTML = "";
+  for (const [key, monto] of Object.entries(byPeriod).sort()) {
+    const [y, mo] = key.split("-");
+    const row = document.createElement("div");
+    row.className = "category-row-top";
+    row.style.padding = "6px 0";
+    row.innerHTML = `<span style="color:var(--text-secondary)">${MESES[Number(mo)]} ${y}</span><span class="cat-amounts">${fmtCLP(monto)}</span>`;
+    periodosEl.appendChild(row);
+  }
+
+  // Lista ordenada por fecha de vencimiento más próxima
+  const listaEl = $("porPagarLista");
+  listaEl.innerHTML = "";
+  const sorted = [...withDate].sort((a, b) => a.venc - b.venc);
+  for (const m of sorted.slice(0, 25)) {
+    const days = daysUntil(m.venc);
+    const overdue = days < 0;
+    const row = document.createElement("div");
+    row.className = "category-row";
+    row.innerHTML = `
+      <div class="category-row-top">
+        <span class="cat-name">${m.detalle || m.categoria}</span>
+        <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
+      </div>
+      <div style="font-size:12px;margin-top:2px;">
+        <span class="badge ${overdue ? "badge-critical" : "badge-good"}">${vencimientoLabel(days)}</span>
+      </div>`;
+    listaEl.appendChild(row);
+  }
+  if (sorted.length === 0) {
+    listaEl.innerHTML = '<div class="skeleton">Sin vencimientos con fecha</div>';
+  }
 }
 
 function renderPatrimonio() {
@@ -202,6 +280,13 @@ async function init() {
   renderPatrimonio();
 
   $("monthSelect").addEventListener("change", (e) => renderStats(e.target.value));
+
+  const toggleDetail = () => {
+    const detail = $("porPagarDetail");
+    detail.hidden = !detail.hidden;
+    $("porPagarToggle").textContent = detail.hidden ? "Ver detalle ▾" : "Ocultar ▴";
+  };
+  $("porPagarHeader").addEventListener("click", toggleDetail);
 }
 
 init();

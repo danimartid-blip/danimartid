@@ -44,6 +44,12 @@
     </div>
 
     <div class="card">
+      <div class="card-title">Liquidez neta</div>
+      <div class="stat-value" id="statLiquidez">$0</div>
+      <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0;">Saldo en cuentas menos lo pendiente por pagar — lo que te queda si pagaras toda la deuda hoy.</p>
+    </div>
+
+    <div class="card">
       <div class="card-title">Patrimonio (saldos de cuentas)</div>
       <div class="stat-value" id="statPatrimonio">$0</div>
       <div id="accountsMini" style="margin-top:10px;"></div>
@@ -68,8 +74,19 @@
     </div>
 
     <div class="card">
-      <div class="stat-label">Por pagar (pendiente)</div>
-      <div class="stat-value" style="color:var(--warning)" id="statPorPagar">$0</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" id="porPagarHeader">
+        <div>
+          <div class="stat-label">Por pagar (pendiente)</div>
+          <div class="stat-value" style="color:var(--serious)" id="statPorPagar">$0</div>
+        </div>
+        <button class="btn-link" id="porPagarToggle">Ver detalle ▾</button>
+      </div>
+      <div id="porPagarDetail" hidden style="margin-top:12px;">
+        <div class="card-title" style="margin-bottom:6px;">Por período de vencimiento</div>
+        <div id="porPagarPeriodos"></div>
+        <div class="card-title" style="margin:16px 0 6px;">Próximos vencimientos</div>
+        <div id="porPagarLista"></div>
+      </div>
     </div>
   </div>
 </div>
