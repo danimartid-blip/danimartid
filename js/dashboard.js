@@ -40,20 +40,33 @@ function parseFechaVenc(s) {
   return isNaN(date) ? null : date;
 }
 
-function daysUntil(date) {
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  return Math.round((date.getTime() - startOfToday.getTime()) / 86400000);
-}
-
-function vencimientoLabel(days) {
-  if (days < 0) return `vencido hace ${-days}d`;
-  if (days === 0) return "vence hoy";
-  return `vence en ${days}d`;
-}
-
 function monthKey(m) {
   return `${m.año}-${String(m.mes).padStart(2, "0")}`;
+}
+
+/** Chronological array of the n month-keys ending at (and including) selectedKey. */
+function monthsBackFrom(selectedKey, n) {
+  const [y, m] = selectedKey.split("-").map(Number);
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(y, m - 1 - i, 1);
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+/** Best-effort short display date (DD/MM) from either DD/MM/YYYY or YYYY-MM-DD. */
+function formatFechaCorta(fecha) {
+  const s = String(fecha || "").trim();
+  if (s.includes("/")) {
+    const [d, m] = s.split("/");
+    if (d && m) return `${d.padStart(2, "0")}/${m.padStart(2, "0")}`;
+  }
+  if (s.includes("-")) {
+    const [y, m, d] = s.split("-");
+    if (d && m) return `${d.padStart(2, "0")}/${m.padStart(2, "0")}`;
+  }
+  return s;
 }
 
 function populateMonthSelect() {
@@ -94,17 +107,63 @@ function renderStats(selectedKey) {
   if (sorted.length === 0) {
     list.innerHTML = '<div class="skeleton">Sin gastos este mes</div>';
   }
+  // Totales mensuales por categoría (para la mini-tendencia de 6 meses al expandir).
+  const monthlyByCat = {};
+  for (const m of movimientos) {
+    if (m.tipo !== "Gasto") continue;
+    (monthlyByCat[m.categoria] ||= {});
+    const key = monthKey(m);
+    monthlyByCat[m.categoria][key] = (monthlyByCat[m.categoria][key] || 0) + Math.abs(m.monto);
+  }
+
   for (const [cat, monto] of sorted) {
     const meta = presupuesto[cat];
     const pct = meta ? Math.round((monto / meta) * 100) : null;
     const row = document.createElement("div");
     row.className = "category-row";
+
+    const sixMonths = monthsBackFrom(selectedKey, 6);
+    const sixVals = sixMonths.map((k) => (monthlyByCat[cat] || {})[k] || 0);
+    const sixMax = Math.max(...sixVals, 1);
+    const sparkline = sixMonths
+      .map((k, i) => {
+        const [, mo] = k.split("-");
+        const heightPct = Math.max(4, Math.round((sixVals[i] / sixMax) * 100));
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
+          <div style="width:100%;height:36px;display:flex;align-items:flex-end;">
+            <div style="width:100%;background:var(--series-1);border-radius:3px 3px 0 0;height:${heightPct}%;"></div>
+          </div>
+          <div style="font-size:9px;color:var(--text-muted);">${MESES[Number(mo)]}</div>
+        </div>`;
+      })
+      .join("");
+
+    const detailRows = movimientos
+      .filter((m) => m.tipo === "Gasto" && m.categoria === cat && monthKey(m) === selectedKey)
+      .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))
+      .map(
+        (m) => `<div class="category-row-top" style="padding:6px 0;font-size:13px;">
+          <span style="color:var(--text-secondary)">${formatFechaCorta(m.fecha)} · ${m.detalle || m.subcategoria || "—"}</span>
+          <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
+        </div>`
+      )
+      .join("");
+
     row.innerHTML = `
-      <div class="category-row-top">
+      <div class="category-row-top cat-clickable">
         <span class="cat-name">${cat}</span>
-        <span class="cat-amounts">${fmtCLP(monto)}${meta ? ` <span class="meta">/ ${fmtCLP(meta)}</span>` : ""}</span>
+        <span class="cat-amounts">${fmtCLP(monto)}${meta ? ` <span class="meta">de ${fmtCLP(meta)}</span>` : ""}</span>
       </div>
-      ${meta ? `<div class="bar-track"><div class="bar-fill${pct > 100 ? " over" : ""}" style="width:${Math.min(pct, 100)}%"></div></div>` : ""}`;
+      ${meta ? `<div class="bar-track"><div class="bar-fill${pct > 100 ? " over" : ""}" style="width:${Math.min(pct, 100)}%"></div></div>` : ""}
+      <div class="cat-detail" hidden>
+        <div style="display:flex;gap:6px;margin-top:12px;">${sparkline}</div>
+        <div style="margin-top:10px;">${detailRows || '<div class="skeleton" style="padding:8px 0;">Sin movimientos este mes</div>'}</div>
+      </div>`;
+
+    row.querySelector(".cat-clickable").addEventListener("click", () => {
+      const detail = row.querySelector(".cat-detail");
+      detail.hidden = !detail.hidden;
+    });
     list.appendChild(row);
   }
 
@@ -136,36 +195,21 @@ function renderPorPagarDetail(pendientes) {
   }
   const periodosEl = $("porPagarPeriodos");
   periodosEl.innerHTML = "";
+  const today = new Date();
   for (const [key, monto] of Object.entries(byPeriod).sort()) {
     const [y, mo] = key.split("-");
+    const isPast = Number(y) < today.getFullYear() ||
+      (Number(y) === today.getFullYear() && Number(mo) < today.getMonth() + 1);
     const row = document.createElement("div");
     row.className = "category-row-top";
-    row.style.padding = "6px 0";
-    row.innerHTML = `<span style="color:var(--text-secondary)">${MESES[Number(mo)]} ${y}</span><span class="cat-amounts">${fmtCLP(monto)}</span>`;
+    row.style.padding = "8px 0";
+    row.innerHTML = `
+      <span style="color:var(--text-secondary)">${MESES[Number(mo)]} ${y}${isPast ? ' <span class="badge badge-warning">atrasado</span>' : ""}</span>
+      <span class="cat-amounts">${fmtCLP(monto)}</span>`;
     periodosEl.appendChild(row);
   }
-
-  // Lista ordenada por fecha de vencimiento más próxima
-  const listaEl = $("porPagarLista");
-  listaEl.innerHTML = "";
-  const sorted = [...withDate].sort((a, b) => a.venc - b.venc);
-  for (const m of sorted.slice(0, 25)) {
-    const days = daysUntil(m.venc);
-    const overdue = days < 0;
-    const row = document.createElement("div");
-    row.className = "category-row";
-    row.innerHTML = `
-      <div class="category-row-top">
-        <span class="cat-name">${m.detalle || m.categoria}</span>
-        <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
-      </div>
-      <div style="font-size:12px;margin-top:2px;">
-        <span class="badge ${overdue ? "badge-critical" : "badge-good"}">${vencimientoLabel(days)}</span>
-      </div>`;
-    listaEl.appendChild(row);
-  }
-  if (sorted.length === 0) {
-    listaEl.innerHTML = '<div class="skeleton">Sin vencimientos con fecha</div>';
+  if (Object.keys(byPeriod).length === 0) {
+    periodosEl.innerHTML = '<div class="skeleton">Sin vencimientos con fecha</div>';
   }
 }
 
@@ -199,24 +243,44 @@ function renderTrend() {
     svg.innerHTML = "";
     return;
   }
-  const w = 320, h = 120, pad = 8;
+  const w = 320, h = 140, padTop = 10, padBottom = 24, padX = 14;
+  const plotH = h - padTop - padBottom;
   const maxVal = Math.max(...keys.map((k) => Math.max(byMonth[k].ingresos, byMonth[k].gastos)), 1);
-  const stepX = (w - pad * 2) / (keys.length - 1);
-  const yOf = (v) => h - pad - (v / maxVal) * (h - pad * 2);
-  const xOf = (i) => pad + i * stepX;
+  const stepX = (w - padX * 2) / (keys.length - 1);
+  const yOf = (v) => padTop + plotH - (v / maxVal) * plotH;
+  const xOf = (i) => padX + i * stepX;
   const pointsFor = (field) => keys.map((k, i) => `${xOf(i)},${yOf(byMonth[k][field])}`).join(" ");
+  const dotsFor = (field, color) =>
+    keys.map((k, i) => `<circle cx="${xOf(i)}" cy="${yOf(byMonth[k][field])}" r="2.5" fill="${color}"/>`).join("");
 
   const style = getComputedStyle(document.documentElement);
   const incomeColor = style.getPropertyValue("--income").trim();
   const expenseColor = style.getPropertyValue("--expense").trim();
+  const mutedColor = style.getPropertyValue("--text-muted").trim();
+  const gridColor = style.getPropertyValue("--grid").trim();
+
+  const gridLine = `<line x1="${padX}" y1="${padTop + plotH}" x2="${w - padX}" y2="${padTop + plotH}" stroke="${gridColor}" stroke-width="1"/>`;
+
+  const labels = keys
+    .map((k, i) => {
+      const [, mo] = k.split("-");
+      // Show every label if it fits, otherwise skip alternating ones to avoid crowding.
+      if (keys.length > 7 && i % 2 === 1 && i !== keys.length - 1) return "";
+      return `<text x="${xOf(i)}" y="${h - 6}" font-size="9" fill="${mutedColor}" text-anchor="middle">${MESES[Number(mo)]}</text>`;
+    })
+    .join("");
 
   const hitAreas = keys
-    .map((k, i) => `<rect x="${xOf(i) - stepX / 2}" y="0" width="${stepX}" height="${h}" fill="transparent" data-i="${i}"/>`)
+    .map((k, i) => `<rect x="${xOf(i) - stepX / 2}" y="0" width="${stepX}" height="${padTop + plotH}" fill="transparent" data-i="${i}"/>`)
     .join("");
 
   svg.innerHTML = `
+    ${gridLine}
     <polyline points="${pointsFor("ingresos")}" fill="none" stroke="${incomeColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
     <polyline points="${pointsFor("gastos")}" fill="none" stroke="${expenseColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    ${dotsFor("ingresos", incomeColor)}
+    ${dotsFor("gastos", expenseColor)}
+    ${labels}
     ${hitAreas}
   `;
 
@@ -226,7 +290,7 @@ function renderTrend() {
     const rect = svg.getBoundingClientRect();
     tooltip.innerHTML = `${MESES[Number(mo)]} ${y}<br>Ing: ${fmtCLP(byMonth[k].ingresos)}<br>Gas: ${fmtCLP(byMonth[k].gastos)}`;
     tooltip.style.left = `${clientX - rect.left}px`;
-    tooltip.style.top = `${(yOf(Math.max(byMonth[k].ingresos, byMonth[k].gastos)) / h) * rect.height}px`;
+    tooltip.style.top = `${((yOf(Math.max(byMonth[k].ingresos, byMonth[k].gastos)) / h) * rect.height)}px`;
     tooltip.classList.add("show");
   };
   const hideTip = () => tooltip.classList.remove("show");

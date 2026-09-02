@@ -136,6 +136,8 @@ header.topbar h1 { font-size: 19px; margin: 0; font-weight: 700; letter-spacing:
 .category-row-top .cat-name { font-weight: 600; }
 .category-row-top .cat-amounts { color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .category-row-top .cat-amounts .meta { color: var(--text-muted); }
+.cat-clickable { cursor: pointer; }
+.cat-clickable .cat-name::after { content: " ▾"; color: var(--text-muted); font-size: 11px; }
 
 .bar-track { height: 6px; border-radius: 4px; background: var(--surface-2); overflow: hidden; margin-top: 7px; }
 .bar-fill { height: 100%; border-radius: 4px; background: var(--series-1); }
@@ -232,6 +234,16 @@ nav.tabbar a.active { color: var(--series-1); background: color-mix(in srgb, var
 
 .login-gate { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 70vh; text-align: center; gap: 16px; padding: 24px; }
 .login-gate .btn-primary { width: auto; padding: 12px 28px; }
+.login-gate-subtle { min-height: 40vh; gap: 8px; }
+.login-gate-subtle .btn-secondary { width: auto; }
+
+.card-hero { text-align: center; padding: 22px 18px; }
+.stat-value-hero { font-size: 34px; }
+
+.balance-equation { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.balance-term { text-align: center; flex: 1; }
+.balance-term .stat-value { font-size: 18px; }
+.balance-op { color: var(--text-muted); font-size: 16px; font-weight: 650; padding-top: 14px; }
 
 .skeleton { color: var(--text-muted); font-size: 14px; padding: 24px 0; text-align: center; }
 
