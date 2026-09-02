@@ -115,18 +115,7 @@ async function handleSubmit(e) {
 }
 
 async function init() {
-  if (!window.SheetsAuth.isLoggedIn()) {
-    $("loginGate").hidden = false;
-    $("loginBtn").addEventListener("click", async () => {
-      try {
-        await window.SheetsAuth.getAccessToken();
-        location.reload();
-      } catch (err) {
-        showToast("No se pudo conectar", true);
-      }
-    });
-    return;
-  }
+  if (!window.SheetsAuth.requireAuthOrRedirect()) return;
 
   $("loadingSkeleton").hidden = false;
   await loadOptions();

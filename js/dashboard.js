@@ -381,18 +381,7 @@ async function loadData() {
 }
 
 async function init() {
-  if (!window.SheetsAuth.isLoggedIn()) {
-    $("loginGate").hidden = false;
-    $("loginBtn").addEventListener("click", async () => {
-      try {
-        await window.SheetsAuth.getAccessToken();
-        location.reload();
-      } catch {
-        alert("No se pudo conectar con Google");
-      }
-    });
-    return;
-  }
+  if (!window.SheetsAuth.requireAuthOrRedirect()) return;
 
   $("loadingSkeleton").hidden = false;
   await loadData();

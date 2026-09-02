@@ -1,5 +1,5 @@
 // Google Identity Services (client-side OAuth) + thin Sheets API v4 helper.
-// No backend, no client secret — token lives only in this browser's sessionStorage.
+// No backend, no client secret — token lives only in this browser's localStorage.
 
 const TOKEN_KEY = "gsheets_token";
 let tokenClient = null;
@@ -7,7 +7,7 @@ let tokenClientReady = null;
 
 function loadStoredToken() {
   try {
-    const raw = sessionStorage.getItem(TOKEN_KEY);
+    const raw = localStorage.getItem(TOKEN_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed.expiresAt > Date.now() + 30_000) return parsed;
@@ -19,7 +19,7 @@ function loadStoredToken() {
 
 function storeToken(tokenResponse) {
   const expiresAt = Date.now() + (Number(tokenResponse.expires_in) || 3300) * 1000;
-  sessionStorage.setItem(
+  localStorage.setItem(
     TOKEN_KEY,
     JSON.stringify({ accessToken: tokenResponse.access_token, expiresAt })
   );
@@ -78,7 +78,7 @@ function isLoggedIn() {
 
 function logout() {
   const cached = loadStoredToken();
-  sessionStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_KEY);
   if (cached && window.google?.accounts?.oauth2) {
     window.google.accounts.oauth2.revoke(cached.accessToken, () => {});
   }
@@ -131,5 +131,14 @@ async function updateRange(range, values) {
   );
 }
 
-window.SheetsAuth = { getAccessToken, isLoggedIn, logout };
+/** Call at the top of a page's init(). Redirects to the login splash if not
+ * authenticated, and returns false so the caller can bail out early. */
+function requireAuthOrRedirect() {
+  if (isLoggedIn()) return true;
+  const here = location.pathname.split("/").pop() || "registro.html";
+  location.replace(`login.html?next=${encodeURIComponent(here)}`);
+  return false;
+}
+
+window.SheetsAuth = { getAccessToken, isLoggedIn, logout, requireAuthOrRedirect };
 window.SheetsApi = { readRange, appendRow, updateRange };

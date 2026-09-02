@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Finanzas</title>
+<meta name="theme-color" content="#3d6b5c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/styles.css">
+<style>
+  .splash {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    text-align: center;
+    padding: 24px;
+  }
+  .splash-icon {
+    width: 64px; height: 64px; border-radius: 16px;
+    background: var(--series-1);
+    color: #fff; font-size: 32px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .splash h1 { font-size: 22px; margin: 0; }
+  .splash p { color: var(--text-muted); font-size: 13px; margin: 0; max-width: 260px; }
+</style>
+</head>
+<body>
+
+<div class="splash">
+  <div class="splash-icon">$</div>
+  <h1>Finanzas</h1>
+  <p id="statusText">Conecta tu cuenta de Google para continuar.</p>
+  <button class="btn-primary" id="loginBtn" style="width:auto;padding:12px 28px;">Conectar con Google</button>
+</div>
+
+<script src="js/config.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="js/sheets-auth.js"></script>
+<script src="js/login.js"></script>
+</body>
+</html>
