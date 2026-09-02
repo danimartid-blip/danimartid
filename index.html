@@ -44,18 +44,32 @@
     </div>
 
     <div class="card">
-      <div class="stat-label" style="margin-bottom:8px;">Tendencia (últimos meses)</div>
-      <svg id="trendChart" width="100%" height="120" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
+      <div class="card-title">Patrimonio (saldos de cuentas)</div>
+      <div class="stat-value" id="statPatrimonio">$0</div>
+      <div id="accountsMini" style="margin-top:10px;"></div>
+      <a href="cuentas.html" class="btn-link">Ver y actualizar cuentas →</a>
     </div>
 
     <div class="card">
-      <div class="stat-label" style="margin-bottom:8px;">Gasto por categoría vs. presupuesto</div>
+      <div class="card-title">Tendencia (últimos meses)</div>
+      <div class="legend">
+        <span class="legend-item"><span class="legend-dot" style="background:var(--income)"></span>Ingresos</span>
+        <span class="legend-item"><span class="legend-dot" style="background:var(--expense)"></span>Gastos</span>
+      </div>
+      <div class="chart-wrap">
+        <svg id="trendChart" width="100%" height="120" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
+        <div class="chart-tooltip" id="trendTooltip"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Gasto por categoría vs. presupuesto</div>
       <div id="categoryList"></div>
     </div>
 
     <div class="card">
       <div class="stat-label">Por pagar (pendiente)</div>
-      <div class="stat-value warn" id="statPorPagar">$0</div>
+      <div class="stat-value" style="color:var(--warning)" id="statPorPagar">$0</div>
     </div>
   </div>
 </div>
@@ -63,6 +77,7 @@
 <nav class="tabbar">
   <a href="index.html" class="active">Dashboard</a>
   <a href="registro.html">Registrar</a>
+  <a href="cuentas.html">Cuentas</a>
 </nav>
 
 <script src="js/config.js"></script>

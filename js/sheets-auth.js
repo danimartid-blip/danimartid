@@ -120,5 +120,16 @@ async function appendRow(range, row) {
   );
 }
 
+/** Overwrites a specific range (e.g. a single row) in place. */
+async function updateRange(range, values) {
+  return sheetsFetch(
+    `/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ values }),
+    }
+  );
+}
+
 window.SheetsAuth = { getAccessToken, isLoggedIn, logout };
-window.SheetsApi = { readRange, appendRow };
+window.SheetsApi = { readRange, appendRow, updateRange };

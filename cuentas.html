@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cuentas — Finanzas</title>
+<meta name="theme-color" content="#2a78d6">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1>Cuentas</h1>
+</header>
+
+<div class="container">
+
+  <div id="loginGate" class="login-gate" hidden>
+    <div>
+      <h2>Conecta tu Google</h2>
+      <p style="color:var(--text-muted)">Para ver y actualizar tus saldos.</p>
+    </div>
+    <button class="btn-primary" id="loginBtn">Conectar con Google</button>
+  </div>
+
+  <div id="loadingSkeleton" class="skeleton" hidden>Cargando…</div>
+
+  <div id="content" hidden>
+    <div class="card">
+      <div class="card-title">Patrimonio total</div>
+      <div class="total-patrimonio">
+        <div class="stat-value" id="totalPatrimonio">$0</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Saldos por cuenta</div>
+      <p style="font-size:12px;color:var(--text-muted);margin:-6px 0 12px;">
+        Ingresados a mano — actualízalos cuando revises tu banco. No se calculan solos porque tus medios de pago mezclan cuentas y tarjetas de crédito.
+      </p>
+      <div id="accountList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<nav class="tabbar">
+  <a href="index.html">Dashboard</a>
+  <a href="registro.html">Registrar</a>
+  <a href="cuentas.html" class="active">Cuentas</a>
+</nav>
+
+<script src="js/config.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="js/sheets-auth.js"></script>
+<script src="js/cuentas.js"></script>
+</body>
+</html>
