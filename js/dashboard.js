@@ -8,8 +8,24 @@ function fmtCLP(n) {
 }
 
 let movimientos = []; // { fecha, año, mes, tipo, categoria, subcategoria, medioPago, estado, monto, detalle }
-let presupuesto = {}; // categoria -> meta (number)
+let presupuestoRows = []; // { mes, tipo, categoria, subcategoria, monto }
 let cuentas = []; // { nombre, saldo }
+
+/** Sum of budgeted Gasto for a categoria (all its subcategoria rows, incl. the blank
+ * "general" one) in a given month. Returns null when nothing is budgeted. */
+function budgetForCategoria(mes, categoria) {
+  const rows = presupuestoRows.filter((p) => p.mes === mes && p.tipo === "Gasto" && p.categoria === categoria);
+  if (rows.length === 0) return null;
+  return rows.reduce((s, p) => s + p.monto, 0);
+}
+
+/** Budgeted Gasto for one specific categoria+subcategoria in a given month, or null. */
+function budgetForSubcategoria(mes, categoria, subcategoria) {
+  const row = presupuestoRows.find(
+    (p) => p.mes === mes && p.tipo === "Gasto" && p.categoria === categoria && p.subcategoria === subcategoria
+  );
+  return row ? row.monto : null;
+}
 
 function parseMovimientos(rows) {
   return rows
@@ -117,10 +133,11 @@ const escapeAttr = (s) => String(s).replace(/"/g, "&quot;");
 /** A clickable subcategory row; its own 6-month sparkline + transaction list build lazily on first click. */
 function buildSubcategoryRow(cat, sub, subMonto, selectedKey) {
   const rowId = `sub-${cat}-${sub}`.replace(/[^a-zA-Z0-9]/g, "");
+  const subMeta = budgetForSubcategoria(selectedKey, cat, sub === "(sin subcategoría)" ? "" : sub);
   return `
     <div class="category-row-top cat-clickable sub-clickable" data-cat="${escapeAttr(cat)}" data-sub="${escapeAttr(sub)}" data-key="${selectedKey}" data-target="${rowId}" style="padding:8px 0;font-size:13px;">
       <span style="color:var(--text-secondary)">${sub}</span>
-      <span class="cat-amounts">${fmtCLP(subMonto)}</span>
+      <span class="cat-amounts">${fmtCLP(subMonto)}${subMeta ? ` <span class="meta">de ${fmtCLP(subMeta)}</span>` : ""}</span>
     </div>
     <div class="sub-detail" id="${rowId}" hidden></div>`;
 }
@@ -188,7 +205,7 @@ function renderStats(selectedKey) {
     list.innerHTML = '<div class="skeleton">Sin gastos este mes</div>';
   }
   for (const [cat, monto] of sorted) {
-    const meta = presupuesto[cat];
+    const meta = budgetForCategoria(selectedKey, cat);
     const pct = meta ? Math.round((monto / meta) * 100) : null;
     const row = document.createElement("div");
     row.className = "category-row";
@@ -367,14 +384,15 @@ function renderTrend() {
 async function loadData() {
   const [movRows, presRows, cuentasRows] = await Promise.all([
     window.SheetsApi.readRange("Movimientos!A2:N100000"),
-    window.SheetsApi.readRange("Presupuesto!A2:B1000"),
+    window.SheetsApi.readRange("Presupuesto!A2:E10000"),
     window.SheetsApi.readRange("Cuentas!A2:C1000"),
   ]);
   movimientos = parseMovimientos(movRows);
-  presupuesto = {};
-  for (const [cat, meta] of presRows) {
-    if (cat) presupuesto[cat] = Number(meta) || 0;
-  }
+  presupuestoRows = presRows
+    .filter((r) => r[0] && r[2])
+    .map(([mes, tipo, categoria, subcategoria, monto]) => ({
+      mes, tipo, categoria, subcategoria: subcategoria || "", monto: Number(monto) || 0,
+    }));
   cuentas = cuentasRows
     .filter((r) => r[0])
     .map(([nombre, saldo]) => ({ nombre, saldo: Number(saldo) || 0 }));

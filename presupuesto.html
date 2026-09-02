@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Presupuesto — Finanzas</title>
+<meta name="theme-color" content="#2a78d6">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1>Presupuesto</h1>
+  <input type="month" id="monthPicker" class="native" style="width:auto;padding:8px 10px;font-size:14px;">
+</header>
+
+<div class="container">
+
+  <div id="loadingSkeleton" class="skeleton" hidden>Cargando…</div>
+
+  <div id="content" hidden>
+    <div class="card">
+      <div class="balance-equation">
+        <div class="balance-term">
+          <div class="stat-label">Ingreso ppto.</div>
+          <div class="stat-value income" id="statIngresoPpto">$0</div>
+        </div>
+        <div class="balance-op">−</div>
+        <div class="balance-term">
+          <div class="stat-label">Gasto ppto.</div>
+          <div class="stat-value expense" id="statGastoPpto">$0</div>
+        </div>
+        <div class="balance-op">=</div>
+        <div class="balance-term">
+          <div class="stat-label">Resultado</div>
+          <div class="stat-value" id="statResultado">$0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Agregar línea de presupuesto</div>
+      <div class="type-toggle" id="tipoToggle">
+        <button type="button" data-type="Gasto" class="active">Gasto</button>
+        <button type="button" data-type="Ingreso">Ingreso</button>
+      </div>
+      <label for="categoria">Categoría</label>
+      <input type="text" id="categoria" list="categoriaList" autocomplete="off">
+      <datalist id="categoriaList"></datalist>
+
+      <label for="subcategoria">Subcategoría (opcional)</label>
+      <input type="text" id="subcategoria" list="subcategoriaList" autocomplete="off" placeholder="Déjalo vacío para meta general de la categoría">
+      <datalist id="subcategoriaList"></datalist>
+
+      <label for="monto">Monto</label>
+      <input type="number" inputmode="numeric" id="monto" placeholder="0">
+
+      <button class="btn-primary" id="addBtn">Agregar</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Gastos presupuestados</div>
+      <div id="gastoList"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Ingresos presupuestados</div>
+      <div id="ingresoList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<nav class="tabbar">
+  <a href="index.html">Dashboard</a>
+  <a href="registro.html">Registrar</a>
+  <a href="presupuesto.html" class="active">Presupuesto</a>
+  <a href="cuentas.html">Cuentas</a>
+</nav>
+
+<script src="js/config.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="js/sheets-auth.js"></script>
+<script src="js/presupuesto.js"></script>
+</body>
+</html>
