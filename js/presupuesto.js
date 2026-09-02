@@ -12,14 +12,31 @@ function showToast(msg, isError = false) {
   setTimeout(() => (t.className = "toast"), 2200);
 }
 
-let rows = []; // { row, mes, tipo, categoria, subcategoria, monto }
-let categoriasConocidas = [];
-let categoriaSubMap = {};
+let presRows = []; // { row, mes, tipo, categoria, subcategoria, monto }
+let movimientos = []; // full Movimientos, same shape as dashboard.js
+let categoriaSubMap = {}; // from Movimientos, for the add-line datalists
 let tipoState = "Gasto";
 
 function currentMonthValue() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthKeyOf(m) {
+  return `${m.año}-${String(m.mes).padStart(2, "0")}`;
+}
+
+function formatFechaCorta(fecha) {
+  const s = String(fecha || "").trim();
+  if (s.includes("/")) {
+    const [d, mo] = s.split("/");
+    if (d && mo) return `${d.padStart(2, "0")}/${mo.padStart(2, "0")}`;
+  }
+  if (s.includes("-")) {
+    const [, mo, d] = s.split("-");
+    if (d && mo) return `${d.padStart(2, "0")}/${mo.padStart(2, "0")}`;
+  }
+  return s;
 }
 
 function fillDatalist(id, values) {
@@ -32,26 +49,108 @@ function fillDatalist(id, values) {
   });
 }
 
-function buildRow(item) {
-  const label = item.subcategoria ? `${item.categoria} · ${item.subcategoria}` : item.categoria;
-  const el = document.createElement("div");
-  el.className = "account-row";
-  el.innerHTML = `
-    <div>
-      <div class="account-name">${label}</div>
+/** Builds one category accordion: header (auto-summed total) + its subcategory rows. */
+function buildCategoriaBlock(categoria, subRows, tipo, month) {
+  const total = subRows.reduce((s, r) => s + r.monto, 0);
+  const catId = `cat-${tipo}-${categoria}`.replace(/[^a-zA-Z0-9]/g, "");
+  const subHtml = subRows
+    .sort((a, b) => b.monto - a.monto)
+    .map((r) => buildSubcategoriaRow(r, tipo, month))
+    .join("");
+
+  const wrap = document.createElement("div");
+  wrap.className = "category-row";
+  wrap.innerHTML = `
+    <div class="category-row-top cat-clickable" data-target="${catId}">
+      <span class="cat-name">${categoria}</span>
+      <span class="cat-amounts">${fmtCLP(total)}</span>
     </div>
-    <div class="account-actions">
-      <div class="account-balance" id="amt-${item.row}">${fmtCLP(item.monto)}</div>
-      <button class="btn-secondary" data-edit="${item.row}">✎</button>
+    <div class="sub-detail" id="${catId}" hidden>${subHtml}</div>
+  `;
+  wrap.querySelector(".cat-clickable").addEventListener("click", () => {
+    const detail = wrap.querySelector(`#${catId}`);
+    detail.hidden = !detail.hidden;
+  });
+  wireSubcategoriaToggles(wrap);
+  return wrap;
+}
+
+function buildSubcategoriaRow(item, tipo, month) {
+  const label = item.subcategoria || "General";
+  const subId = `sub-${item.row}`;
+  return `
+    <div class="category-row-top cat-clickable sub-clickable" data-row="${item.row}" data-target="${subId}" style="padding:8px 0;font-size:13px;">
+      <span style="color:var(--text-secondary)">${label}</span>
+      <span class="cat-amounts">${fmtCLP(item.monto)}</span>
+    </div>
+    <div class="sub-detail" id="${subId}" hidden></div>`;
+}
+
+function wireSubcategoriaToggles(scope) {
+  scope.querySelectorAll(".sub-clickable").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const rowNum = Number(el.dataset.row);
+      const item = presRows.find((r) => r.row === rowNum);
+      const detail = document.getElementById(el.dataset.target);
+      const willOpen = detail.hidden;
+      detail.hidden = !detail.hidden;
+      if (willOpen) renderSubcategoriaDetail(detail, item);
+    });
+  });
+}
+
+function renderSubcategoriaDetail(detail, item) {
+  const sub = item.subcategoria || "";
+  const realMovs = movimientos
+    .filter(
+      (m) =>
+        m.tipo === item.tipo &&
+        m.categoria === item.categoria &&
+        (m.subcategoria || "") === sub &&
+        monthKeyOf(m) === item.mes
+    )
+    .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+  const realTotal = realMovs.reduce((s, m) => s + Math.abs(m.monto), 0);
+  const pct = item.monto ? Math.round((realTotal / item.monto) * 100) : null;
+
+  const movHtml =
+    realMovs
+      .map(
+        (m) => `<div class="category-row-top" style="padding:5px 0;font-size:12px;">
+        <span style="color:var(--text-muted)">${formatFechaCorta(m.fecha)} · ${m.detalle || "—"}</span>
+        <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
+      </div>`
+      )
+      .join("") || '<div class="skeleton" style="padding:6px 0;font-size:12px;">Sin movimientos reales este mes</div>';
+
+  detail.innerHTML = `
+    <div class="inline-form">
+      <input type="number" inputmode="numeric" value="${item.monto}" id="editInput-${item.row}">
+      <button class="btn-secondary" data-save="${item.row}">Guardar</button>
       <button class="btn-secondary" data-del="${item.row}">×</button>
     </div>
+    <div style="font-size:12px;color:var(--text-muted);margin:8px 0;">
+      Real: ${fmtCLP(realTotal)}${pct != null ? ` (${pct}% del presupuesto)` : ""}
+    </div>
+    ${movHtml}
   `;
-  return el;
+
+  detail.querySelector("[data-save]").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const val = Number($(`editInput-${item.row}`).value);
+    if (isNaN(val)) return showToast("Monto inválido", true);
+    updateMonto(item.row, val);
+  });
+  detail.querySelector("[data-del]").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (confirm("¿Eliminar esta línea de presupuesto?")) deleteRow(item.row);
+  });
 }
 
 function render() {
   const month = $("monthPicker").value;
-  const inMonth = rows.filter((r) => r.mes === month);
+  const inMonth = presRows.filter((r) => r.mes === month);
   const gastos = inMonth.filter((r) => r.tipo === "Gasto");
   const ingresos = inMonth.filter((r) => r.tipo === "Ingreso");
 
@@ -65,40 +164,27 @@ function render() {
   resEl.textContent = fmtCLP(resultado);
   resEl.className = "stat-value " + (resultado >= 0 ? "income" : "expense");
 
-  const gastoList = $("gastoList");
-  gastoList.innerHTML = "";
-  if (gastos.length === 0) gastoList.innerHTML = '<div class="skeleton">Sin presupuesto de gasto este mes</div>';
-  gastos.forEach((r) => gastoList.appendChild(buildRow(r)));
-
-  const ingresoList = $("ingresoList");
-  ingresoList.innerHTML = "";
-  if (ingresos.length === 0) ingresoList.innerHTML = '<div class="skeleton">Sin presupuesto de ingreso este mes</div>';
-  ingresos.forEach((r) => ingresoList.appendChild(buildRow(r)));
-
-  wireRowButtons();
+  renderGroup($("gastoList"), gastos, "Gasto", month, "Sin presupuesto de gasto este mes");
+  renderGroup($("ingresoList"), ingresos, "Ingreso", month, "Sin presupuesto de ingreso este mes");
 }
 
-function wireRowButtons() {
-  document.querySelectorAll("[data-edit]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const rowNum = Number(btn.dataset.edit);
-      const item = rows.find((r) => r.row === rowNum);
-      const nuevo = prompt(`Nuevo monto para ${item.categoria}${item.subcategoria ? " · " + item.subcategoria : ""}:`, item.monto);
-      if (nuevo == null || nuevo === "" || isNaN(Number(nuevo))) return;
-      updateMonto(rowNum, Number(nuevo));
-    });
-  });
-  document.querySelectorAll("[data-del]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (confirm("¿Eliminar esta línea de presupuesto?")) deleteRow(Number(btn.dataset.del));
-    });
-  });
+function renderGroup(container, rowsForTipo, tipo, month, emptyMsg) {
+  container.innerHTML = "";
+  if (rowsForTipo.length === 0) {
+    container.innerHTML = `<div class="skeleton">${emptyMsg}</div>`;
+    return;
+  }
+  const byCat = {};
+  for (const r of rowsForTipo) (byCat[r.categoria] ||= []).push(r);
+  Object.entries(byCat)
+    .sort((a, b) => b[1].reduce((s, r) => s + r.monto, 0) - a[1].reduce((s, r) => s + r.monto, 0))
+    .forEach(([categoria, subRows]) => container.appendChild(buildCategoriaBlock(categoria, subRows, tipo, month)));
 }
 
 async function updateMonto(rowNum, nuevoMonto) {
   try {
     await window.SheetsApi.updateRange(`Presupuesto!E${rowNum}`, [[nuevoMonto]]);
-    const item = rows.find((r) => r.row === rowNum);
+    const item = presRows.find((r) => r.row === rowNum);
     item.monto = nuevoMonto;
     render();
     showToast("Actualizado ✓");
@@ -111,7 +197,7 @@ async function updateMonto(rowNum, nuevoMonto) {
 async function deleteRow(rowNum) {
   try {
     await window.SheetsApi.updateRange(`Presupuesto!A${rowNum}:E${rowNum}`, [["", "", "", "", ""]]);
-    rows = rows.filter((r) => r.row !== rowNum);
+    presRows = presRows.filter((r) => r.row !== rowNum);
     render();
     showToast("Eliminado ✓");
   } catch (err) {
@@ -141,9 +227,9 @@ async function handleAdd() {
     $("categoria").value = "";
     $("subcategoria").value = "";
     $("monto").value = "";
-    showToast("Agregado ✓ (recargando…)");
-    await loadData();
+    await loadPresupuesto();
     render();
+    showToast("Agregado ✓");
   } catch (err) {
     console.error(err);
     showToast("Error al agregar", true);
@@ -152,12 +238,9 @@ async function handleAdd() {
   }
 }
 
-async function loadData() {
-  const [presRows, movRows] = await Promise.all([
-    window.SheetsApi.readRange("Presupuesto!A2:E10000"),
-    window.SheetsApi.readRange("Movimientos!E2:F100000"),
-  ]);
-  rows = presRows
+async function loadPresupuesto() {
+  const rows = await window.SheetsApi.readRange("Presupuesto!A2:E10000");
+  presRows = rows
     .map((r, i) => ({
       row: i + 2,
       mes: r[0] || "",
@@ -167,17 +250,33 @@ async function loadData() {
       monto: Number(r[4]) || 0,
     }))
     .filter((r) => r.mes && r.categoria);
+}
+
+async function loadData() {
+  const [movRows] = await Promise.all([window.SheetsApi.readRange("Movimientos!A2:N100000"), loadPresupuesto()]);
+  movimientos = movRows
+    .filter((r) => r[0])
+    .map((r) => ({
+      fecha: r[0],
+      año: String(r[1] || "").trim(),
+      mes: String(r[2] || "").trim(),
+      tipo: r[3] || "",
+      categoria: r[4] || "",
+      subcategoria: r[5] || "",
+      estado: r[7] || "",
+      monto: Number(r[8]) || 0,
+      detalle: r[9] || "",
+    }));
 
   categoriaSubMap = {};
   const cats = new Set();
-  for (const [cat, sub] of movRows) {
-    if (!cat) continue;
-    cats.add(cat);
-    if (sub) (categoriaSubMap[cat] ||= new Set()).add(sub);
+  for (const m of movimientos) {
+    if (!m.categoria) continue;
+    cats.add(m.categoria);
+    if (m.subcategoria) (categoriaSubMap[m.categoria] ||= new Set()).add(m.subcategoria);
   }
-  rows.forEach((r) => cats.add(r.categoria));
-  categoriasConocidas = [...cats];
-  fillDatalist("categoriaList", categoriasConocidas);
+  presRows.forEach((r) => cats.add(r.categoria));
+  fillDatalist("categoriaList", [...cats]);
 }
 
 async function init() {
