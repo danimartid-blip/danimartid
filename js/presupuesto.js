@@ -125,6 +125,13 @@ const escapeAttr = (s) => String(s ?? "").replace(/"/g, "&quot;");
  * devuelve el panel equivocado (los paneles cerrados siguen en el DOM). */
 let uid = 0;
 
+/* Qué está desplegado, por clave estable (no por id de DOM), para que al
+   re-renderizar tras guardar no se pliegue todo y se pierda dónde ibas. */
+const openCats = new Set(); // "Gasto|Diezmo"
+const openSubs = new Set(); // "Gasto|Diezmo|Diezmo"
+const catKeyOf = (tipo, categoria) => `${tipo}|${categoria}`;
+const subKeyOf = (tipo, categoria, sub) => `${tipo}|${categoria}|${sub}`;
+
 function buildCategoriaBlock(tipo, categoria, mes, historyMonths) {
   const subs = subcategoriasFor(tipo, categoria, mes, historyMonths);
   const subInfos = subs.map((sub) => subInfo(tipo, categoria, sub, mes, historyMonths));
@@ -134,9 +141,12 @@ function buildCategoriaBlock(tipo, categoria, mes, historyMonths) {
   const listId = `subopts${uid}`;
   const knownSubs = [...(categoriaSubMap[categoria] || [])].sort();
 
+  const catKey = catKeyOf(tipo, categoria);
+  const catOpen = openCats.has(catKey);
+
   const subHtml = subInfos
     .sort((a, b) => b.effective - a.effective)
-    .map((si) => buildSubcategoriaRow(si, historyMonths))
+    .map((si) => buildSubcategoriaRow(si, historyMonths, tipo, categoria))
     .join("");
 
   const wrap = document.createElement("div");
@@ -147,7 +157,7 @@ function buildCategoriaBlock(tipo, categoria, mes, historyMonths) {
       <span class="cat-amounts">${fmtCLP(catPromedio)}</span>
     </div>
     ${buildStatsRow(catPromedio, catHistory, historyMonths)}
-    <div class="sub-detail" id="${catId}" hidden style="margin-top:10px;">
+    <div class="sub-detail${catOpen ? " no-anim" : ""}" id="${catId}" ${catOpen ? "" : "hidden"} style="margin-top:10px;">
       ${subHtml}
       <div class="add-sub">
         <button type="button" class="btn-link add-sub-toggle">+ Agregar subcategoría</button>
@@ -166,6 +176,9 @@ function buildCategoriaBlock(tipo, categoria, mes, historyMonths) {
   const panel = wrap.querySelector(`#${catId}`);
   wrap.querySelector(".cat-clickable").addEventListener("click", () => {
     panel.hidden = !panel.hidden;
+    panel.classList.remove("no-anim");
+    if (panel.hidden) openCats.delete(catKey);
+    else openCats.add(catKey);
   });
 
   const addToggle = wrap.querySelector(".add-sub-toggle");
@@ -190,29 +203,40 @@ function buildCategoriaBlock(tipo, categoria, mes, historyMonths) {
   return wrap;
 }
 
-function buildSubcategoriaRow(si, historyMonths) {
+function buildSubcategoriaRow(si, historyMonths, tipo, categoria) {
   const label = si.sub || "General";
   const subId = `sub${++uid}`;
+  const isOpen = openSubs.has(subKeyOf(tipo, categoria, si.sub));
   return `
     <div class="category-row-top cat-clickable sub-clickable" data-sub="${escapeAttr(si.sub)}" data-target="${subId}" style="padding:8px 0;font-size:13px;">
       <span style="color:var(--text-secondary)">${label}${si.row ? "" : ' <span class="meta" style="font-size:10px;">(sugerido)</span>'}</span>
       <span class="cat-amounts">${fmtCLP(si.effective)}</span>
     </div>
     ${buildStatsRow(si.effective, si.historyTotals, historyMonths)}
-    <div class="sub-detail" id="${subId}" hidden></div>`;
+    <div class="sub-detail${isOpen ? " no-anim" : ""}" id="${subId}" ${isOpen ? "" : "hidden"}></div>`;
 }
 
 function wireSubcategoriaToggles(scope, tipo, categoria, mes, historyMonths) {
   scope.querySelectorAll(".sub-clickable").forEach((el) => {
+    const sub = el.dataset.sub;
+    const detail = scope.querySelector(`#${el.dataset.target}`);
+    const key = subKeyOf(tipo, categoria, sub);
+
+    // Si venía abierto de antes del re-render, se repuebla al vuelo.
+    if (!detail.hidden) {
+      renderSubcategoriaDetail(detail, tipo, categoria, sub, mes, subInfo(tipo, categoria, sub, mes, historyMonths));
+    }
+
     el.addEventListener("click", (e) => {
       e.stopPropagation();
-      const sub = el.dataset.sub;
-      const detail = scope.querySelector(`#${el.dataset.target}`);
       const willOpen = detail.hidden;
       detail.hidden = !detail.hidden;
+      detail.classList.remove("no-anim");
       if (willOpen) {
-        const si = subInfo(tipo, categoria, sub, mes, historyMonths);
-        renderSubcategoriaDetail(detail, tipo, categoria, sub, mes, si);
+        openSubs.add(key);
+        renderSubcategoriaDetail(detail, tipo, categoria, sub, mes, subInfo(tipo, categoria, sub, mes, historyMonths));
+      } else {
+        openSubs.delete(key);
       }
     });
   });
@@ -297,6 +321,7 @@ async function deleteRow(rowNum) {
 }
 
 function render() {
+  const scrollY = window.scrollY; // se restaura al final: guardar no debe saltar al inicio
   const mes = $("monthPicker").value;
   const historyMonths = monthsBeforeExclusive(mes, 3);
 
@@ -330,6 +355,8 @@ function render() {
   if (ingresoCats.length === 0) ingresoList.innerHTML = '<div class="skeleton no-spinner">Sin datos para proponer presupuesto de ingreso</div>';
   ingresoCats.forEach((cat) => ingresoList.appendChild(buildCategoriaBlock("Ingreso", cat, mes, historyMonths)));
   ingresoList.appendChild(buildAddCategoriaBlock("Ingreso", mes));
+
+  requestAnimationFrame(() => window.scrollTo(0, scrollY));
 }
 
 /** "+ Agregar categoría" al final de cada lista — para categorías que aún no existen. */

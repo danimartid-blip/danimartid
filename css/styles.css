@@ -304,6 +304,8 @@ header.topbar h1 {
 .sub-detail, .cat-detail {
   animation: revealDown .24s var(--ease);
 }
+/* ya estaba abierto antes del re-render: no re-animar */
+.sub-detail.no-anim, .cat-detail.no-anim { animation: none; }
 .sub-detail {
   margin-left: 4px;
   padding-left: 12px;
