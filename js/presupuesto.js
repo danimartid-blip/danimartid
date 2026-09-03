@@ -111,14 +111,23 @@ function categoriasFor(tipo, mes, historyMonths) {
 }
 
 function buildStatsRow(promedio, historyTotals, historyMonths) {
+  const max = Math.max(...historyTotals, 1);
   const cells = [
-    `<div style="flex:1.3;text-align:center;"><div style="font-weight:700;font-size:13px;">${fmtCLP(promedio)}</div><div style="font-size:9px;color:var(--text-muted);">Prom. 3m</div></div>`,
+    `<div class="stats-cell is-primary">
+      <div class="v">${fmtCLP(promedio)}</div>
+      <div class="k">Prom. 3m</div>
+    </div>`,
     ...historyTotals.map((v, i) => {
       const [, mo] = historyMonths[i].split("-");
-      return `<div style="flex:1;text-align:center;"><div style="font-size:11px;color:var(--text-secondary);">${fmtCLP(v)}</div><div style="font-size:9px;color:var(--text-muted);">${MESES[Number(mo)]}</div></div>`;
+      const pct = Math.max(3, Math.round((v / max) * 100));
+      return `<div class="stats-cell">
+        <div class="v">${fmtCLP(v)}</div>
+        <div class="minibar"><i style="height:${pct}%"></i></div>
+        <div class="k">${MESES[Number(mo)]}</div>
+      </div>`;
     }),
   ];
-  return `<div style="display:flex;gap:4px;margin-top:6px;padding-top:6px;border-top:1px solid var(--grid);">${cells.join("")}</div>`;
+  return `<div class="stats-row">${cells.join("")}</div>`;
 }
 
 function buildCategoriaBlock(tipo, categoria, mes, historyMonths) {
@@ -190,7 +199,7 @@ function renderSubcategoriaDetail(detail, tipo, categoria, sub, mes, si) {
         <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
       </div>`
       )
-      .join("") || '<div class="skeleton" style="padding:6px 0;font-size:12px;">Sin movimientos reales este mes</div>';
+      .join("") || '<div class="skeleton no-spinner" style="padding:6px 0;font-size:12px;">Sin movimientos reales este mes</div>';
 
   detail.innerHTML = `
     <div class="inline-form">
@@ -275,12 +284,12 @@ function render() {
 
   const gastoList = $("gastoList");
   gastoList.innerHTML = "";
-  if (gastoCats.length === 0) gastoList.innerHTML = '<div class="skeleton">Sin datos para proponer presupuesto de gasto</div>';
+  if (gastoCats.length === 0) gastoList.innerHTML = '<div class="skeleton no-spinner">Sin datos para proponer presupuesto de gasto</div>';
   gastoCats.forEach((cat) => gastoList.appendChild(buildCategoriaBlock("Gasto", cat, mes, historyMonths)));
 
   const ingresoList = $("ingresoList");
   ingresoList.innerHTML = "";
-  if (ingresoCats.length === 0) ingresoList.innerHTML = '<div class="skeleton">Sin datos para proponer presupuesto de ingreso</div>';
+  if (ingresoCats.length === 0) ingresoList.innerHTML = '<div class="skeleton no-spinner">Sin datos para proponer presupuesto de ingreso</div>';
   ingresoCats.forEach((cat) => ingresoList.appendChild(buildCategoriaBlock("Ingreso", cat, mes, historyMonths)));
 }
 

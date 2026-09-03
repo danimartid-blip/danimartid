@@ -163,18 +163,17 @@ function monthlyTotals(predicate) {
 function buildSparklineHTML(sixMonths, totalsByMonth) {
   const vals = sixMonths.map((k) => totalsByMonth[k] || 0);
   const max = Math.max(...vals, 1);
-  return sixMonths
+  const cols = sixMonths
     .map((k, i) => {
       const [, mo] = k.split("-");
-      const heightPct = Math.max(4, Math.round((vals[i] / max) * 100));
-      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
-        <div style="width:100%;height:36px;display:flex;align-items:flex-end;">
-          <div style="width:100%;background:var(--series-1);border-radius:3px 3px 0 0;height:${heightPct}%;"></div>
-        </div>
-        <div style="font-size:9px;color:var(--text-muted);">${MESES[Number(mo)]}</div>
+      const heightPct = Math.max(3, Math.round((vals[i] / max) * 100));
+      return `<div class="spark-col" title="${MESES[Number(mo)]}: ${fmtCLP(vals[i])}">
+        <div class="spark-bar-slot"><div class="spark-bar" style="height:${heightPct}%"></div></div>
+        <div class="spark-label">${MESES[Number(mo)]}</div>
       </div>`;
     })
     .join("");
+  return `<div class="spark">${cols}</div>`;
 }
 
 const escapeAttr = (s) => String(s).replace(/"/g, "&quot;");
@@ -222,8 +221,8 @@ function wireSubcategoryToggles(scope) {
           )
           .join("");
         detail.innerHTML = `
-          <div style="display:flex;gap:5px;margin:8px 0;">${sparkline}</div>
-          ${items || '<div class="skeleton" style="padding:6px 0;font-size:12px;">Sin movimientos este mes</div>'}`;
+          <div style="margin:10px 0 12px;">${sparkline}</div>
+          ${items || '<div class="skeleton no-spinner" style="padding:6px 0;font-size:12px;">Sin movimientos este mes</div>'}`;
       }
     });
   });
@@ -251,7 +250,7 @@ function renderStats(selectedKey) {
   const list = $("categoryList");
   list.innerHTML = "";
   if (sorted.length === 0) {
-    list.innerHTML = '<div class="skeleton">Sin gastos este mes</div>';
+    list.innerHTML = '<div class="skeleton no-spinner">Sin gastos este mes</div>';
   }
   for (const [cat, monto] of sorted) {
     const meta = budgetForCategoria(selectedKey, cat);
@@ -283,8 +282,8 @@ function renderStats(selectedKey) {
       </div>
       ${meta ? `<div class="bar-track"><div class="bar-fill${pct > 100 ? " over" : ""}" style="width:${Math.min(pct, 100)}%"></div></div>` : ""}
       <div class="cat-detail" hidden>
-        <div style="display:flex;gap:6px;margin-top:12px;">${sparkline}</div>
-        <div style="margin-top:12px;">${subRows || '<div class="skeleton" style="padding:8px 0;">Sin movimientos este mes</div>'}</div>
+        <div style="margin-top:14px;">${sparkline}</div>
+        <div style="margin-top:12px;">${subRows || '<div class="skeleton no-spinner" style="padding:8px 0;">Sin movimientos este mes</div>'}</div>
       </div>`;
 
     row.querySelector(".cat-clickable").addEventListener("click", () => {
@@ -353,7 +352,7 @@ function renderPorPagarDetail(pendientes) {
     periodosEl.appendChild(row);
   }
   if (Object.keys(byPeriod).length === 0) {
-    periodosEl.innerHTML = '<div class="skeleton">Sin vencimientos con fecha</div>';
+    periodosEl.innerHTML = '<div class="skeleton no-spinner">Sin vencimientos con fecha</div>';
   }
 }
 
@@ -387,15 +386,13 @@ function renderTrend() {
     svg.innerHTML = "";
     return;
   }
-  const w = 320, h = 140, padTop = 10, padBottom = 24, padX = 14;
+  const w = 320, h = 140, padTop = 12, padBottom = 26, padX = 14;
   const plotH = h - padTop - padBottom;
   const maxVal = Math.max(...keys.map((k) => Math.max(byMonth[k].ingresos, byMonth[k].gastos)), 1);
   const stepX = (w - padX * 2) / (keys.length - 1);
   const yOf = (v) => padTop + plotH - (v / maxVal) * plotH;
   const xOf = (i) => padX + i * stepX;
-  const pointsFor = (field) => keys.map((k, i) => `${xOf(i)},${yOf(byMonth[k][field])}`).join(" ");
-  const dotsFor = (field, color) =>
-    keys.map((k, i) => `<circle cx="${xOf(i)}" cy="${yOf(byMonth[k][field])}" r="2.5" fill="${color}"/>`).join("");
+  const ptsFor = (field) => keys.map((k, i) => ({ x: xOf(i), y: yOf(byMonth[k][field]) }));
 
   const style = getComputedStyle(document.documentElement);
   const incomeColor = style.getPropertyValue("--income").trim();
@@ -403,14 +400,40 @@ function renderTrend() {
   const mutedColor = style.getPropertyValue("--text-muted").trim();
   const gridColor = style.getPropertyValue("--grid").trim();
 
-  const gridLine = `<line x1="${padX}" y1="${padTop + plotH}" x2="${w - padX}" y2="${padTop + plotH}" stroke="${gridColor}" stroke-width="1"/>`;
+  // Catmull-Rom -> bezier: una curva suave en vez de quiebres duros.
+  const smoothPath = (pts) => {
+    if (pts.length < 2) return "";
+    let d = `M ${pts[0].x},${pts[0].y}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i - 1] || pts[i];
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      const p3 = pts[i + 2] || p2;
+      const t = 0.2;
+      d += ` C ${p1.x + (p2.x - p0.x) * t},${p1.y + (p2.y - p0.y) * t}` +
+           ` ${p2.x - (p3.x - p1.x) * t},${p2.y - (p3.y - p1.y) * t}` +
+           ` ${p2.x},${p2.y}`;
+    }
+    return d;
+  };
+  const areaPath = (pts) => `${smoothPath(pts)} L ${pts[pts.length - 1].x},${padTop + plotH} L ${pts[0].x},${padTop + plotH} Z`;
+
+  const ingPts = ptsFor("ingresos");
+  const gasPts = ptsFor("gastos");
+
+  // gridlines suaves de fondo (3 niveles)
+  const gridLines = [0, 0.5, 1]
+    .map((f) => {
+      const y = padTop + plotH - f * plotH;
+      return `<line x1="${padX}" y1="${y}" x2="${w - padX}" y2="${y}" stroke="${gridColor}" stroke-width="1" ${f > 0 ? 'stroke-dasharray="2 4"' : ""}/>`;
+    })
+    .join("");
 
   const labels = keys
     .map((k, i) => {
       const [, mo] = k.split("-");
-      // Show every label if it fits, otherwise skip alternating ones to avoid crowding.
       if (keys.length > 7 && i % 2 === 1 && i !== keys.length - 1) return "";
-      return `<text x="${xOf(i)}" y="${h - 6}" font-size="9" fill="${mutedColor}" text-anchor="middle">${MESES[Number(mo)]}</text>`;
+      return `<text x="${xOf(i)}" y="${h - 7}" font-size="9" font-weight="600" fill="${mutedColor}" text-anchor="middle">${MESES[Number(mo)]}</text>`;
     })
     .join("");
 
@@ -419,25 +442,59 @@ function renderTrend() {
     .join("");
 
   svg.innerHTML = `
-    ${gridLine}
-    <polyline points="${pointsFor("ingresos")}" fill="none" stroke="${incomeColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="${pointsFor("gastos")}" fill="none" stroke="${expenseColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-    ${dotsFor("ingresos", incomeColor)}
-    ${dotsFor("gastos", expenseColor)}
+    <defs>
+      <linearGradient id="gradIng" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${incomeColor}" stop-opacity="0.26"/>
+        <stop offset="100%" stop-color="${incomeColor}" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="gradGas" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${expenseColor}" stop-opacity="0.22"/>
+        <stop offset="100%" stop-color="${expenseColor}" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    ${gridLines}
+    <path d="${areaPath(ingPts)}" fill="url(#gradIng)"/>
+    <path d="${areaPath(gasPts)}" fill="url(#gradGas)"/>
+    <path d="${smoothPath(ingPts)}" fill="none" stroke="${incomeColor}" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="${smoothPath(gasPts)}" fill="none" stroke="${expenseColor}" stroke-width="2.4" stroke-linecap="round"/>
+    <line id="crosshair" x1="0" y1="${padTop}" x2="0" y2="${padTop + plotH}" stroke="${mutedColor}" stroke-width="1" stroke-dasharray="3 3" opacity="0"/>
+    <circle id="dotIng" r="4" fill="${incomeColor}" stroke="var(--surface)" stroke-width="2" opacity="0"/>
+    <circle id="dotGas" r="4" fill="${expenseColor}" stroke="var(--surface)" stroke-width="2" opacity="0"/>
     ${labels}
     ${hitAreas}
   `;
+
+  const crosshair = svg.querySelector("#crosshair");
+  const dotIng = svg.querySelector("#dotIng");
+  const dotGas = svg.querySelector("#dotGas");
 
   const showTip = (i, clientX) => {
     const k = keys[i];
     const [y, mo] = k.split("-");
     const rect = svg.getBoundingClientRect();
-    tooltip.innerHTML = `${MESES[Number(mo)]} ${y}<br>Ing: ${fmtCLP(byMonth[k].ingresos)}<br>Gas: ${fmtCLP(byMonth[k].gastos)}`;
+    tooltip.innerHTML =
+      `<strong>${MESES[Number(mo)]} ${y}</strong><br>` +
+      `↑ ${fmtCLP(byMonth[k].ingresos)}<br>↓ ${fmtCLP(byMonth[k].gastos)}`;
     tooltip.style.left = `${clientX - rect.left}px`;
-    tooltip.style.top = `${((yOf(Math.max(byMonth[k].ingresos, byMonth[k].gastos)) / h) * rect.height)}px`;
+    tooltip.style.top = `${(yOf(Math.max(byMonth[k].ingresos, byMonth[k].gastos)) / h) * rect.height}px`;
     tooltip.classList.add("show");
+
+    crosshair.setAttribute("x1", xOf(i));
+    crosshair.setAttribute("x2", xOf(i));
+    crosshair.setAttribute("opacity", "0.55");
+    dotIng.setAttribute("cx", xOf(i));
+    dotIng.setAttribute("cy", yOf(byMonth[k].ingresos));
+    dotIng.setAttribute("opacity", "1");
+    dotGas.setAttribute("cx", xOf(i));
+    dotGas.setAttribute("cy", yOf(byMonth[k].gastos));
+    dotGas.setAttribute("opacity", "1");
   };
-  const hideTip = () => tooltip.classList.remove("show");
+  const hideTip = () => {
+    tooltip.classList.remove("show");
+    crosshair.setAttribute("opacity", "0");
+    dotIng.setAttribute("opacity", "0");
+    dotGas.setAttribute("opacity", "0");
+  };
 
   svg.querySelectorAll("rect[data-i]").forEach((rect) => {
     const i = Number(rect.dataset.i);
