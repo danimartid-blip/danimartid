@@ -130,16 +130,24 @@ function buildStatsRow(promedio, historyTotals, historyMonths) {
   return `<div class="stats-row">${cells.join("")}</div>`;
 }
 
+const escapeAttr = (s) => String(s ?? "").replace(/"/g, "&quot;");
+
+/** Contador global: los ids del DOM deben ser únicos, si no getElementById
+ * devuelve el panel equivocado (los paneles cerrados siguen en el DOM). */
+let uid = 0;
+
 function buildCategoriaBlock(tipo, categoria, mes, historyMonths) {
   const subs = subcategoriasFor(tipo, categoria, mes, historyMonths);
   const subInfos = subs.map((sub) => subInfo(tipo, categoria, sub, mes, historyMonths));
   const catPromedio = subInfos.reduce((s, si) => s + si.effective, 0);
   const catHistory = historyMonths.map((_, i) => subInfos.reduce((s, si) => s + si.historyTotals[i], 0));
-  const catId = `cat-${tipo}-${categoria}`.replace(/[^a-zA-Z0-9]/g, "");
+  const catId = `cat${++uid}`;
+  const listId = `subopts${uid}`;
+  const knownSubs = [...(categoriaSubMap[categoria] || [])].sort();
 
   const subHtml = subInfos
     .sort((a, b) => b.effective - a.effective)
-    .map((si) => buildSubcategoriaRow(tipo, categoria, si, mes, historyMonths))
+    .map((si) => buildSubcategoriaRow(si, historyMonths))
     .join("");
 
   const wrap = document.createElement("div");
@@ -150,20 +158,54 @@ function buildCategoriaBlock(tipo, categoria, mes, historyMonths) {
       <span class="cat-amounts">${fmtCLP(catPromedio)}</span>
     </div>
     ${buildStatsRow(catPromedio, catHistory, historyMonths)}
-    <div class="sub-detail" id="${catId}" hidden style="margin-top:10px;">${subHtml}</div>
+    <div class="sub-detail" id="${catId}" hidden style="margin-top:10px;">
+      ${subHtml}
+      <div class="add-sub">
+        <button type="button" class="btn-link add-sub-toggle">+ Agregar subcategoría</button>
+        <div class="add-sub-form" hidden>
+          <input type="text" class="new-sub-name" placeholder="Nombre de la subcategoría" list="${listId}" autocomplete="off">
+          <datalist id="${listId}">${knownSubs.map((s) => `<option value="${escapeAttr(s)}"></option>`).join("")}</datalist>
+          <div class="inline-form">
+            <input type="number" class="new-sub-monto" inputmode="numeric" placeholder="Monto">
+            <button type="button" class="btn-secondary new-sub-save">Agregar</button>
+          </div>
+        </div>
+      </div>
+    </div>
   `;
+
+  const panel = wrap.querySelector(`#${catId}`);
   wrap.querySelector(".cat-clickable").addEventListener("click", () => {
-    wrap.querySelector(`#${catId}`).hidden = !wrap.querySelector(`#${catId}`).hidden;
+    panel.hidden = !panel.hidden;
   });
+
+  const addToggle = wrap.querySelector(".add-sub-toggle");
+  const addForm = wrap.querySelector(".add-sub-form");
+  addToggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    addForm.hidden = !addForm.hidden;
+    addToggle.textContent = addForm.hidden ? "+ Agregar subcategoría" : "Cancelar";
+    if (!addForm.hidden) wrap.querySelector(".new-sub-name").focus();
+  });
+  wrap.querySelector(".new-sub-save").addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const nombre = wrap.querySelector(".new-sub-name").value.trim();
+    const monto = Number(wrap.querySelector(".new-sub-monto").value);
+    if (!nombre || !monto) return showToast("Falta nombre o monto", true);
+    // Si ya existe una línea fijada para esa subcategoría, la actualiza en vez de duplicar.
+    const existente = findExplicit(mes, tipo, categoria, nombre);
+    await upsertMonto(mes, tipo, categoria, nombre, monto, existente ? existente.row : null);
+  });
+
   wireSubcategoriaToggles(wrap, tipo, categoria, mes, historyMonths);
   return wrap;
 }
 
-function buildSubcategoriaRow(tipo, categoria, si, mes, historyMonths) {
+function buildSubcategoriaRow(si, historyMonths) {
   const label = si.sub || "General";
-  const subId = `sub-${tipo}-${categoria}-${si.sub}`.replace(/[^a-zA-Z0-9]/g, "");
+  const subId = `sub${++uid}`;
   return `
-    <div class="category-row-top cat-clickable sub-clickable" data-sub="${si.sub}" data-target="${subId}" style="padding:8px 0;font-size:13px;">
+    <div class="category-row-top cat-clickable sub-clickable" data-sub="${escapeAttr(si.sub)}" data-target="${subId}" style="padding:8px 0;font-size:13px;">
       <span style="color:var(--text-secondary)">${label}${si.row ? "" : ' <span class="meta" style="font-size:10px;">(sugerido)</span>'}</span>
       <span class="cat-amounts">${fmtCLP(si.effective)}</span>
     </div>
@@ -176,7 +218,7 @@ function wireSubcategoriaToggles(scope, tipo, categoria, mes, historyMonths) {
     el.addEventListener("click", (e) => {
       e.stopPropagation();
       const sub = el.dataset.sub;
-      const detail = document.getElementById(el.dataset.target);
+      const detail = scope.querySelector(`#${el.dataset.target}`);
       const willOpen = detail.hidden;
       detail.hidden = !detail.hidden;
       if (willOpen) {
@@ -203,24 +245,28 @@ function renderSubcategoriaDetail(detail, tipo, categoria, sub, mes, si) {
 
   detail.innerHTML = `
     <div class="inline-form">
-      <input type="number" inputmode="numeric" value="${si.effective}" id="editInput">
-      <button class="btn-secondary" id="saveBtn">Guardar</button>
-      ${si.row ? `<button class="btn-secondary" id="delBtn">×</button>` : ""}
+      <input type="number" inputmode="numeric" value="${Math.round(si.effective)}" class="edit-input">
+      <button class="btn-secondary edit-save">Guardar</button>
+      ${si.row ? `<button class="btn-secondary edit-del" title="Volver al promedio">×</button>` : ""}
     </div>
-    <div style="font-size:11px;color:var(--text-muted);margin:6px 0;">
-      ${si.row ? "Monto fijado manualmente." : `Propuesta = promedio de los 3 meses anteriores.`}
+    <div style="font-size:11px;color:var(--text-muted);margin:8px 0 10px;">
+      ${si.row
+        ? '<span class="badge badge-good">fijado</span> Monto puesto por ti.'
+        : '<span class="badge badge-muted">sugerido</span> Promedio de los 3 meses anteriores.'}
     </div>
-    <div style="font-size:12px;color:var(--text-muted);margin:8px 0;">Movimientos reales de este mes:</div>
+    <div style="font-size:11.5px;color:var(--text-muted);margin:10px 0 4px;font-weight:650;">Movimientos reales de este mes</div>
     ${movHtml}
   `;
 
-  detail.querySelector("#saveBtn").addEventListener("click", async (e) => {
+  // OJO: siempre acotado a este panel. Los paneles cerrados quedan en el DOM,
+  // así que un lookup global tomaría el input de otra subcategoría.
+  detail.querySelector(".edit-save").addEventListener("click", async (e) => {
     e.stopPropagation();
-    const val = Number($("editInput").value);
+    const val = Number(detail.querySelector(".edit-input").value);
     if (isNaN(val)) return showToast("Monto inválido", true);
     await upsertMonto(mes, tipo, categoria, sub, val, si.row);
   });
-  const delBtn = detail.querySelector("#delBtn");
+  const delBtn = detail.querySelector(".edit-del");
   if (delBtn) {
     delBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
