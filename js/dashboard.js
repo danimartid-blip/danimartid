@@ -257,7 +257,25 @@ function renderStats(selectedKey) {
   liquidezEl.textContent = fmtCLP(liquidez);
   liquidezEl.className = "stat-value " + (liquidez >= 0 ? "income" : "expense");
 
+  renderLiquidezPresupuestada(selectedKey, liquidez);
   renderPorPagarDetail(pendientes);
+}
+
+function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
+  const enMes = presupuestoRows.filter((p) => p.mes === selectedKey);
+  const el = $("liquidezPptoLine");
+  if (enMes.length === 0) {
+    el.textContent = "(Sin presupuesto para este mes)";
+    el.style.color = "var(--text-muted)";
+    return;
+  }
+  const ingresoPpto = enMes.filter((p) => p.tipo === "Ingreso").reduce((s, p) => s + p.monto, 0);
+  const gastoPpto = enMes.filter((p) => p.tipo === "Gasto").reduce((s, p) => s + p.monto, 0);
+  const resultadoPpto = ingresoPpto - gastoPpto;
+  const liquidezPpto = liquidezReal + resultadoPpto;
+
+  el.textContent = `(Presupuestada: ${fmtCLP(liquidezPpto)})`;
+  el.style.color = resultadoPpto >= 0 ? "var(--good)" : "var(--critical)";
 }
 
 function renderPorPagarDetail(pendientes) {
