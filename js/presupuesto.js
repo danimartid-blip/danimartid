@@ -269,9 +269,11 @@ function renderSubcategoriaDetail(detail, tipo, categoria, sub, mes, si) {
 async function upsertMonto(mes, tipo, categoria, subcategoria, monto, existingRow) {
   try {
     if (existingRow) {
-      await window.SheetsApi.updateRange(`Presupuesto!E${existingRow}`, [[monto]]);
+      await window.SheetsApi.updateRange(`Presupuesto!E${existingRow}`, [[monto]], "RAW");
     } else {
-      await window.SheetsApi.appendRow("Presupuesto!A:E", [mes, tipo, categoria, subcategoria, monto]);
+      // RAW: si no, Sheets convierte "2026-09" en una fecha (nº de serie) y la fila
+      // deja de encontrarse al recargar, duplicándose en cada guardado.
+      await window.SheetsApi.appendRow("Presupuesto!A:E", [mes, tipo, categoria, subcategoria, monto], "RAW");
     }
     await loadPresupuesto();
     render();
@@ -368,12 +370,27 @@ function buildAddCategoriaBlock(tipo, mes) {
   return wrap;
 }
 
+/** Acepta "2026-09" o el número de serie de fecha de Sheets (ej. 46266) y
+ * siempre devuelve "YYYY-MM". Blinda contra filas guardadas antes del fix. */
+function normalizeMes(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  if (/^\d{4}-\d{2}$/.test(s)) return s;
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const d = new Date(Date.UTC(1899, 11, 30) + Number(s) * 86400000);
+    if (!isNaN(d)) return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  }
+  const d = new Date(s);
+  if (!isNaN(d)) return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return s;
+}
+
 async function loadPresupuesto() {
   const rows = await window.SheetsApi.readRange("Presupuesto!A2:E10000");
   presRows = rows
     .map((r, i) => ({
       row: i + 2,
-      mes: r[0] || "",
+      mes: normalizeMes(r[0]),
       tipo: r[1] || "",
       categoria: r[2] || "",
       subcategoria: r[3] || "",

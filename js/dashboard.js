@@ -109,6 +109,20 @@ function monthKey(m) {
   return `${m.año}-${String(m.mes).padStart(2, "0")}`;
 }
 
+/** Acepta "2026-09" o el número de serie de fecha de Sheets y devuelve "YYYY-MM". */
+function normalizeMes(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  if (/^\d{4}-\d{2}$/.test(s)) return s;
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const d = new Date(Date.UTC(1899, 11, 30) + Number(s) * 86400000);
+    if (!isNaN(d)) return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  }
+  const d = new Date(s);
+  if (!isNaN(d)) return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return s;
+}
+
 /** Chronological array of the n month-keys ending at (and including) selectedKey. */
 function monthsBackFrom(selectedKey, n) {
   const [y, m] = selectedKey.split("-").map(Number);
@@ -514,7 +528,11 @@ async function loadData() {
   presupuestoRows = presRows
     .filter((r) => r[0] && r[2])
     .map(([mes, tipo, categoria, subcategoria, monto]) => ({
-      mes, tipo, categoria, subcategoria: subcategoria || "", monto: Number(monto) || 0,
+      mes: normalizeMes(mes),
+      tipo,
+      categoria,
+      subcategoria: subcategoria || "",
+      monto: Number(monto) || 0,
     }));
   cuentas = cuentasRows
     .filter((r) => r[0])

@@ -109,10 +109,12 @@ async function readRange(range) {
   return data.values || [];
 }
 
-/** Appends a single row to the end of a sheet/table. */
-async function appendRow(range, row) {
+/** Appends a single row to the end of a sheet/table.
+ * mode "RAW" guarda los strings tal cual — necesario para valores como "2026-09",
+ * que con USER_ENTERED Sheets interpreta como fecha y convierte a número de serie. */
+async function appendRow(range, row, mode = "USER_ENTERED") {
   return sheetsFetch(
-    `/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    `/values/${encodeURIComponent(range)}:append?valueInputOption=${mode}&insertDataOption=INSERT_ROWS`,
     {
       method: "POST",
       body: JSON.stringify({ values: [row] }),
@@ -121,9 +123,9 @@ async function appendRow(range, row) {
 }
 
 /** Overwrites a specific range (e.g. a single row) in place. */
-async function updateRange(range, values) {
+async function updateRange(range, values, mode = "USER_ENTERED") {
   return sheetsFetch(
-    `/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    `/values/${encodeURIComponent(range)}?valueInputOption=${mode}`,
     {
       method: "PUT",
       body: JSON.stringify({ values }),
