@@ -1,4 +1,5 @@
 const $ = (id) => document.getElementById(id);
+const MESES = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
 function fmtCLP(n) {
   const sign = n < 0 ? "-" : "";
@@ -12,9 +13,9 @@ function showToast(msg, isError = false) {
   setTimeout(() => (t.className = "toast"), 2200);
 }
 
-let presRows = []; // { row, mes, tipo, categoria, subcategoria, monto }
-let movimientos = []; // full Movimientos, same shape as dashboard.js
-let categoriaSubMap = {}; // from Movimientos, for the add-line datalists
+let presRows = []; // { row, mes, tipo, categoria, subcategoria, monto } — explicit overrides only
+let movimientos = []; // full Movimientos
+let categoriaSubMap = {}; // for the "add a brand-new line" form's datalists
 let tipoState = "Gasto";
 
 function currentMonthValue() {
@@ -24,6 +25,17 @@ function currentMonthValue() {
 
 function monthKeyOf(m) {
   return `${m.año}-${String(m.mes).padStart(2, "0")}`;
+}
+
+/** The n month-keys strictly before `mes`, oldest to newest. */
+function monthsBeforeExclusive(mes, n) {
+  const [y, m] = mes.split("-").map(Number);
+  const out = [];
+  for (let i = n; i >= 1; i--) {
+    const d = new Date(y, m - 1 - i, 1);
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return out;
 }
 
 function formatFechaCorta(fecha) {
@@ -49,13 +61,76 @@ function fillDatalist(id, values) {
   });
 }
 
-/** Builds one category accordion: header (auto-summed total) + its subcategory rows. */
-function buildCategoriaBlock(categoria, subRows, tipo, month) {
-  const total = subRows.reduce((s, r) => s + r.monto, 0);
+function realMonthlyTotal(tipo, categoria, subcategoria, monthKey) {
+  return movimientos
+    .filter(
+      (m) => m.tipo === tipo && m.categoria === categoria && (m.subcategoria || "") === subcategoria && monthKeyOf(m) === monthKey
+    )
+    .reduce((s, m) => s + Math.abs(m.monto), 0);
+}
+
+function findExplicit(mes, tipo, categoria, subcategoria) {
+  return presRows.find(
+    (r) => r.mes === mes && r.tipo === tipo && r.categoria === categoria && (r.subcategoria || "") === subcategoria
+  );
+}
+
+/** Everything needed to render/edit one subcategoria's budget line for `mes`. */
+function subInfo(tipo, categoria, subcategoria, mes, historyMonths) {
+  const historyTotals = historyMonths.map((mk) => realMonthlyTotal(tipo, categoria, subcategoria, mk));
+  const avg = historyTotals.reduce((a, b) => a + b, 0) / historyMonths.length;
+  const explicit = findExplicit(mes, tipo, categoria, subcategoria);
+  return {
+    sub: subcategoria,
+    historyTotals,
+    avg,
+    effective: explicit ? explicit.monto : avg,
+    row: explicit ? explicit.row : null,
+  };
+}
+
+/** Subcategorias worth showing for a categoria: had real spend in the trailing 3
+ * months, or already have an explicit budget line this month. */
+function subcategoriasFor(tipo, categoria, mes, historyMonths) {
+  const set = new Set();
+  for (const m of movimientos) {
+    if (m.tipo !== tipo || m.categoria !== categoria) continue;
+    if (historyMonths.includes(monthKeyOf(m))) set.add(m.subcategoria || "");
+  }
+  for (const r of presRows) {
+    if (r.mes === mes && r.tipo === tipo && r.categoria === categoria) set.add(r.subcategoria || "");
+  }
+  return [...set];
+}
+
+function categoriasFor(tipo, mes, historyMonths) {
+  const all = new Set();
+  for (const m of movimientos) if (m.tipo === tipo) all.add(m.categoria);
+  for (const r of presRows) if (r.tipo === tipo) all.add(r.categoria);
+  return [...all].filter((cat) => subcategoriasFor(tipo, cat, mes, historyMonths).length > 0);
+}
+
+function buildStatsRow(promedio, historyTotals, historyMonths) {
+  const cells = [
+    `<div style="flex:1.3;text-align:center;"><div style="font-weight:700;font-size:13px;">${fmtCLP(promedio)}</div><div style="font-size:9px;color:var(--text-muted);">Prom. 3m</div></div>`,
+    ...historyTotals.map((v, i) => {
+      const [, mo] = historyMonths[i].split("-");
+      return `<div style="flex:1;text-align:center;"><div style="font-size:11px;color:var(--text-secondary);">${fmtCLP(v)}</div><div style="font-size:9px;color:var(--text-muted);">${MESES[Number(mo)]}</div></div>`;
+    }),
+  ];
+  return `<div style="display:flex;gap:4px;margin-top:6px;padding-top:6px;border-top:1px solid var(--grid);">${cells.join("")}</div>`;
+}
+
+function buildCategoriaBlock(tipo, categoria, mes, historyMonths) {
+  const subs = subcategoriasFor(tipo, categoria, mes, historyMonths);
+  const subInfos = subs.map((sub) => subInfo(tipo, categoria, sub, mes, historyMonths));
+  const catPromedio = subInfos.reduce((s, si) => s + si.effective, 0);
+  const catHistory = historyMonths.map((_, i) => subInfos.reduce((s, si) => s + si.historyTotals[i], 0));
   const catId = `cat-${tipo}-${categoria}`.replace(/[^a-zA-Z0-9]/g, "");
-  const subHtml = subRows
-    .sort((a, b) => b.monto - a.monto)
-    .map((r) => buildSubcategoriaRow(r, tipo, month))
+
+  const subHtml = subInfos
+    .sort((a, b) => b.effective - a.effective)
+    .map((si) => buildSubcategoriaRow(tipo, categoria, si, mes, historyMonths))
     .join("");
 
   const wrap = document.createElement("div");
@@ -63,57 +138,50 @@ function buildCategoriaBlock(categoria, subRows, tipo, month) {
   wrap.innerHTML = `
     <div class="category-row-top cat-clickable" data-target="${catId}">
       <span class="cat-name">${categoria}</span>
-      <span class="cat-amounts">${fmtCLP(total)}</span>
+      <span class="cat-amounts">${fmtCLP(catPromedio)}</span>
     </div>
-    <div class="sub-detail" id="${catId}" hidden>${subHtml}</div>
+    ${buildStatsRow(catPromedio, catHistory, historyMonths)}
+    <div class="sub-detail" id="${catId}" hidden style="margin-top:10px;">${subHtml}</div>
   `;
   wrap.querySelector(".cat-clickable").addEventListener("click", () => {
-    const detail = wrap.querySelector(`#${catId}`);
-    detail.hidden = !detail.hidden;
+    wrap.querySelector(`#${catId}`).hidden = !wrap.querySelector(`#${catId}`).hidden;
   });
-  wireSubcategoriaToggles(wrap);
+  wireSubcategoriaToggles(wrap, tipo, categoria, mes, historyMonths);
   return wrap;
 }
 
-function buildSubcategoriaRow(item, tipo, month) {
-  const label = item.subcategoria || "General";
-  const subId = `sub-${item.row}`;
+function buildSubcategoriaRow(tipo, categoria, si, mes, historyMonths) {
+  const label = si.sub || "General";
+  const subId = `sub-${tipo}-${categoria}-${si.sub}`.replace(/[^a-zA-Z0-9]/g, "");
   return `
-    <div class="category-row-top cat-clickable sub-clickable" data-row="${item.row}" data-target="${subId}" style="padding:8px 0;font-size:13px;">
-      <span style="color:var(--text-secondary)">${label}</span>
-      <span class="cat-amounts">${fmtCLP(item.monto)}</span>
+    <div class="category-row-top cat-clickable sub-clickable" data-sub="${si.sub}" data-target="${subId}" style="padding:8px 0;font-size:13px;">
+      <span style="color:var(--text-secondary)">${label}${si.row ? "" : ' <span class="meta" style="font-size:10px;">(sugerido)</span>'}</span>
+      <span class="cat-amounts">${fmtCLP(si.effective)}</span>
     </div>
+    ${buildStatsRow(si.effective, si.historyTotals, historyMonths)}
     <div class="sub-detail" id="${subId}" hidden></div>`;
 }
 
-function wireSubcategoriaToggles(scope) {
+function wireSubcategoriaToggles(scope, tipo, categoria, mes, historyMonths) {
   scope.querySelectorAll(".sub-clickable").forEach((el) => {
     el.addEventListener("click", (e) => {
       e.stopPropagation();
-      const rowNum = Number(el.dataset.row);
-      const item = presRows.find((r) => r.row === rowNum);
+      const sub = el.dataset.sub;
       const detail = document.getElementById(el.dataset.target);
       const willOpen = detail.hidden;
       detail.hidden = !detail.hidden;
-      if (willOpen) renderSubcategoriaDetail(detail, item);
+      if (willOpen) {
+        const si = subInfo(tipo, categoria, sub, mes, historyMonths);
+        renderSubcategoriaDetail(detail, tipo, categoria, sub, mes, si);
+      }
     });
   });
 }
 
-function renderSubcategoriaDetail(detail, item) {
-  const sub = item.subcategoria || "";
+function renderSubcategoriaDetail(detail, tipo, categoria, sub, mes, si) {
   const realMovs = movimientos
-    .filter(
-      (m) =>
-        m.tipo === item.tipo &&
-        m.categoria === item.categoria &&
-        (m.subcategoria || "") === sub &&
-        monthKeyOf(m) === item.mes
-    )
+    .filter((m) => m.tipo === tipo && m.categoria === categoria && (m.subcategoria || "") === sub && monthKeyOf(m) === mes)
     .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
-  const realTotal = realMovs.reduce((s, m) => s + Math.abs(m.monto), 0);
-  const pct = item.monto ? Math.round((realTotal / item.monto) * 100) : null;
-
   const movHtml =
     realMovs
       .map(
@@ -126,68 +194,44 @@ function renderSubcategoriaDetail(detail, item) {
 
   detail.innerHTML = `
     <div class="inline-form">
-      <input type="number" inputmode="numeric" value="${item.monto}" id="editInput-${item.row}">
-      <button class="btn-secondary" data-save="${item.row}">Guardar</button>
-      <button class="btn-secondary" data-del="${item.row}">×</button>
+      <input type="number" inputmode="numeric" value="${si.effective}" id="editInput">
+      <button class="btn-secondary" id="saveBtn">Guardar</button>
+      ${si.row ? `<button class="btn-secondary" id="delBtn">×</button>` : ""}
     </div>
-    <div style="font-size:12px;color:var(--text-muted);margin:8px 0;">
-      Real: ${fmtCLP(realTotal)}${pct != null ? ` (${pct}% del presupuesto)` : ""}
+    <div style="font-size:11px;color:var(--text-muted);margin:6px 0;">
+      ${si.row ? "Monto fijado manualmente." : `Propuesta = promedio de los 3 meses anteriores.`}
     </div>
+    <div style="font-size:12px;color:var(--text-muted);margin:8px 0;">Movimientos reales de este mes:</div>
     ${movHtml}
   `;
 
-  detail.querySelector("[data-save]").addEventListener("click", (e) => {
+  detail.querySelector("#saveBtn").addEventListener("click", async (e) => {
     e.stopPropagation();
-    const val = Number($(`editInput-${item.row}`).value);
+    const val = Number($("editInput").value);
     if (isNaN(val)) return showToast("Monto inválido", true);
-    updateMonto(item.row, val);
+    await upsertMonto(mes, tipo, categoria, sub, val, si.row);
   });
-  detail.querySelector("[data-del]").addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (confirm("¿Eliminar esta línea de presupuesto?")) deleteRow(item.row);
-  });
-}
-
-function render() {
-  const month = $("monthPicker").value;
-  const inMonth = presRows.filter((r) => r.mes === month);
-  const gastos = inMonth.filter((r) => r.tipo === "Gasto");
-  const ingresos = inMonth.filter((r) => r.tipo === "Ingreso");
-
-  const totalGasto = gastos.reduce((s, r) => s + r.monto, 0);
-  const totalIngreso = ingresos.reduce((s, r) => s + r.monto, 0);
-  const resultado = totalIngreso - totalGasto;
-
-  $("statIngresoPpto").textContent = fmtCLP(totalIngreso);
-  $("statGastoPpto").textContent = fmtCLP(totalGasto);
-  const resEl = $("statResultado");
-  resEl.textContent = fmtCLP(resultado);
-  resEl.className = "stat-value " + (resultado >= 0 ? "income" : "expense");
-
-  renderGroup($("gastoList"), gastos, "Gasto", month, "Sin presupuesto de gasto este mes");
-  renderGroup($("ingresoList"), ingresos, "Ingreso", month, "Sin presupuesto de ingreso este mes");
-}
-
-function renderGroup(container, rowsForTipo, tipo, month, emptyMsg) {
-  container.innerHTML = "";
-  if (rowsForTipo.length === 0) {
-    container.innerHTML = `<div class="skeleton">${emptyMsg}</div>`;
-    return;
+  const delBtn = detail.querySelector("#delBtn");
+  if (delBtn) {
+    delBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (confirm("¿Volver a usar el promedio sugerido en vez del monto fijado?")) {
+        await deleteRow(si.row);
+      }
+    });
   }
-  const byCat = {};
-  for (const r of rowsForTipo) (byCat[r.categoria] ||= []).push(r);
-  Object.entries(byCat)
-    .sort((a, b) => b[1].reduce((s, r) => s + r.monto, 0) - a[1].reduce((s, r) => s + r.monto, 0))
-    .forEach(([categoria, subRows]) => container.appendChild(buildCategoriaBlock(categoria, subRows, tipo, month)));
 }
 
-async function updateMonto(rowNum, nuevoMonto) {
+async function upsertMonto(mes, tipo, categoria, subcategoria, monto, existingRow) {
   try {
-    await window.SheetsApi.updateRange(`Presupuesto!E${rowNum}`, [[nuevoMonto]]);
-    const item = presRows.find((r) => r.row === rowNum);
-    item.monto = nuevoMonto;
+    if (existingRow) {
+      await window.SheetsApi.updateRange(`Presupuesto!E${existingRow}`, [[monto]]);
+    } else {
+      await window.SheetsApi.appendRow("Presupuesto!A:E", [mes, tipo, categoria, subcategoria, monto]);
+    }
+    await loadPresupuesto();
     render();
-    showToast("Actualizado ✓");
+    showToast("Guardado ✓");
   } catch (err) {
     console.error(err);
     showToast("Error al guardar", true);
@@ -197,13 +241,47 @@ async function updateMonto(rowNum, nuevoMonto) {
 async function deleteRow(rowNum) {
   try {
     await window.SheetsApi.updateRange(`Presupuesto!A${rowNum}:E${rowNum}`, [["", "", "", "", ""]]);
-    presRows = presRows.filter((r) => r.row !== rowNum);
+    await loadPresupuesto();
     render();
-    showToast("Eliminado ✓");
+    showToast("Vuelto al promedio ✓");
   } catch (err) {
     console.error(err);
-    showToast("Error al eliminar", true);
+    showToast("Error", true);
   }
+}
+
+function render() {
+  const mes = $("monthPicker").value;
+  const historyMonths = monthsBeforeExclusive(mes, 3);
+
+  const gastoCats = categoriasFor("Gasto", mes, historyMonths);
+  const ingresoCats = categoriasFor("Ingreso", mes, historyMonths);
+
+  const sumTipo = (cats, tipo) =>
+    cats.reduce((total, cat) => {
+      const subs = subcategoriasFor(tipo, cat, mes, historyMonths);
+      return total + subs.reduce((s, sub) => s + subInfo(tipo, cat, sub, mes, historyMonths).effective, 0);
+    }, 0);
+
+  const totalGasto = sumTipo(gastoCats, "Gasto");
+  const totalIngreso = sumTipo(ingresoCats, "Ingreso");
+  const resultado = totalIngreso - totalGasto;
+
+  $("statIngresoPpto").textContent = fmtCLP(totalIngreso);
+  $("statGastoPpto").textContent = fmtCLP(totalGasto);
+  const resEl = $("statResultado");
+  resEl.textContent = fmtCLP(resultado);
+  resEl.className = "stat-value " + (resultado >= 0 ? "income" : "expense");
+
+  const gastoList = $("gastoList");
+  gastoList.innerHTML = "";
+  if (gastoCats.length === 0) gastoList.innerHTML = '<div class="skeleton">Sin datos para proponer presupuesto de gasto</div>';
+  gastoCats.forEach((cat) => gastoList.appendChild(buildCategoriaBlock("Gasto", cat, mes, historyMonths)));
+
+  const ingresoList = $("ingresoList");
+  ingresoList.innerHTML = "";
+  if (ingresoCats.length === 0) ingresoList.innerHTML = '<div class="skeleton">Sin datos para proponer presupuesto de ingreso</div>';
+  ingresoCats.forEach((cat) => ingresoList.appendChild(buildCategoriaBlock("Ingreso", cat, mes, historyMonths)));
 }
 
 function updateSubcategorias() {
@@ -263,7 +341,6 @@ async function loadData() {
       tipo: r[3] || "",
       categoria: r[4] || "",
       subcategoria: r[5] || "",
-      estado: r[7] || "",
       monto: Number(r[8]) || 0,
       detalle: r[9] || "",
     }));

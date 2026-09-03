@@ -11,20 +11,69 @@ let movimientos = []; // { fecha, año, mes, tipo, categoria, subcategoria, medi
 let presupuestoRows = []; // { mes, tipo, categoria, subcategoria, monto }
 let cuentas = []; // { nombre, saldo }
 
-/** Sum of budgeted Gasto for a categoria (all its subcategoria rows, incl. the blank
- * "general" one) in a given month. Returns null when nothing is budgeted. */
-function budgetForCategoria(mes, categoria) {
-  const rows = presupuestoRows.filter((p) => p.mes === mes && p.tipo === "Gasto" && p.categoria === categoria);
-  if (rows.length === 0) return null;
-  return rows.reduce((s, p) => s + p.monto, 0);
+/** The n month-keys strictly before `mes`, oldest to newest. Mirrors presupuesto.js
+ * so both pages always agree on the "proposed" budget when nothing is fijado. */
+function monthsBeforeExclusive(mes, n) {
+  const [y, m] = mes.split("-").map(Number);
+  const out = [];
+  for (let i = n; i >= 1; i--) {
+    const d = new Date(y, m - 1 - i, 1);
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return out;
 }
 
-/** Budgeted Gasto for one specific categoria+subcategoria in a given month, or null. */
-function budgetForSubcategoria(mes, categoria, subcategoria) {
-  const row = presupuestoRows.find(
-    (p) => p.mes === mes && p.tipo === "Gasto" && p.categoria === categoria && p.subcategoria === subcategoria
+function avg3Real(tipo, categoria, subcategoria, mes) {
+  const months = monthsBeforeExclusive(mes, 3);
+  const totals = months.map((mk) =>
+    movimientos
+      .filter((m) => m.tipo === tipo && m.categoria === categoria && (m.subcategoria || "") === subcategoria && monthKey(m) === mk)
+      .reduce((s, m) => s + Math.abs(m.monto), 0)
   );
-  return row ? row.monto : null;
+  return totals.reduce((a, b) => a + b, 0) / 3;
+}
+
+/** Budgeted amount for one categoria+subcategoria: explicit override if fijado,
+ * else the same 3-month-average proposal shown on the Presupuesto page. */
+function budgetForSubcategoria(mes, categoria, subcategoria, tipo = "Gasto") {
+  const row = presupuestoRows.find(
+    (p) => p.mes === mes && p.tipo === tipo && p.categoria === categoria && p.subcategoria === subcategoria
+  );
+  return row ? row.monto : avg3Real(tipo, categoria, subcategoria, mes);
+}
+
+/** Sum across all of a categoria's subcategorias (explicit-or-average each), matching
+ * the Presupuesto page's "category = sum of its subcategorias" rule. Null only when
+ * the categoria has no subcategorias with any recent activity at all. */
+function budgetForCategoria(mes, categoria, tipo = "Gasto") {
+  const historyMonths = monthsBeforeExclusive(mes, 3);
+  const subs = new Set();
+  for (const m of movimientos) {
+    if (m.tipo === tipo && m.categoria === categoria && historyMonths.includes(monthKey(m))) subs.add(m.subcategoria || "");
+  }
+  for (const p of presupuestoRows) {
+    if (p.mes === mes && p.tipo === tipo && p.categoria === categoria) subs.add(p.subcategoria || "");
+  }
+  if (subs.size === 0) return null;
+  return [...subs].reduce((s, sub) => s + budgetForSubcategoria(mes, categoria, sub, tipo), 0);
+}
+
+/** Every categoria of `tipo` worth proposing a budget for (recent activity or fijado). */
+function categoriasForTipo(tipo, mes) {
+  const historyMonths = monthsBeforeExclusive(mes, 3);
+  const all = new Set();
+  for (const m of movimientos) if (m.tipo === tipo) all.add(m.categoria);
+  for (const p of presupuestoRows) if (p.tipo === tipo) all.add(p.categoria);
+  return [...all].filter((cat) => {
+    const hasHistory = movimientos.some((m) => m.tipo === tipo && m.categoria === cat && historyMonths.includes(monthKey(m)));
+    const hasFijado = presupuestoRows.some((p) => p.mes === mes && p.tipo === tipo && p.categoria === cat);
+    return hasHistory || hasFijado;
+  });
+}
+
+/** Total proposed-or-fijado budget for a whole tipo (Ingreso/Gasto) in a month. */
+function totalBudgetForTipo(tipo, mes) {
+  return categoriasForTipo(tipo, mes).reduce((s, cat) => s + budgetForCategoria(mes, cat, tipo), 0);
 }
 
 function parseMovimientos(rows) {
@@ -262,15 +311,14 @@ function renderStats(selectedKey) {
 }
 
 function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
-  const enMes = presupuestoRows.filter((p) => p.mes === selectedKey);
   const el = $("liquidezPptoLine");
-  if (enMes.length === 0) {
-    el.textContent = "(Sin presupuesto para este mes)";
+  const ingresoPpto = totalBudgetForTipo("Ingreso", selectedKey);
+  const gastoPpto = totalBudgetForTipo("Gasto", selectedKey);
+  if (ingresoPpto === 0 && gastoPpto === 0) {
+    el.textContent = "(Sin datos para proponer presupuesto este mes)";
     el.style.color = "var(--text-muted)";
     return;
   }
-  const ingresoPpto = enMes.filter((p) => p.tipo === "Ingreso").reduce((s, p) => s + p.monto, 0);
-  const gastoPpto = enMes.filter((p) => p.tipo === "Gasto").reduce((s, p) => s + p.monto, 0);
   const resultadoPpto = ingresoPpto - gastoPpto;
   const liquidezPpto = liquidezReal + resultadoPpto;
 
