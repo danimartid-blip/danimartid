@@ -504,6 +504,19 @@ input[type="number"] { font-variant-numeric: tabular-nums; }
 .add-sub-form input { padding: 10px 12px; font-size: 15px; background: var(--surface); }
 .add-sub-form .inline-form { margin-top: 8px; }
 
+/* "+ Agregar categoría" al final de cada lista */
+.add-cat { padding-top: 12px; margin-top: 4px; border-top: 1px dashed var(--border-strong); }
+.add-cat-toggle { font-size: 13px; }
+.add-cat-form {
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-top: 6px;
+  animation: revealDown .2s var(--ease);
+}
+.add-cat-form input { padding: 10px 12px; font-size: 15px; background: var(--surface); }
+.add-cat-form .inline-form { margin-top: 8px; }
+
 /* ---------- nav inferior ---------- */
 
 nav.tabbar {

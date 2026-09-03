@@ -6,7 +6,7 @@
 <title>Presupuesto — Finanzas</title>
 <meta name="theme-color" content="#0e7c6b">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/styles.css?v=202609030002">
 </head>
 <body>
 
@@ -37,29 +37,6 @@
           <div class="stat-value" id="statResultado">$0</div>
         </div>
       </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Agregar categoría nueva</div>
-      <p style="font-size:12px;color:var(--text-muted);margin:-8px 0 12px;line-height:1.5;">
-        Para agregar una subcategoría a una categoría que ya existe, usa el <strong>+</strong> dentro de esa categoría más abajo.
-      </p>
-      <div class="type-toggle" id="tipoToggle">
-        <button type="button" data-type="Gasto" class="active">Gasto</button>
-        <button type="button" data-type="Ingreso">Ingreso</button>
-      </div>
-      <label for="categoria">Categoría</label>
-      <input type="text" id="categoria" list="categoriaList" autocomplete="off">
-      <datalist id="categoriaList"></datalist>
-
-      <label for="subcategoria">Subcategoría (opcional)</label>
-      <input type="text" id="subcategoria" list="subcategoriaList" autocomplete="off" placeholder="Déjalo vacío para meta general de la categoría">
-      <datalist id="subcategoriaList"></datalist>
-
-      <label for="monto">Monto</label>
-      <input type="number" inputmode="numeric" id="monto" placeholder="0">
-
-      <button class="btn-primary" id="addBtn">Agregar</button>
     </div>
 
     <div class="card">
@@ -95,9 +72,9 @@
   </a>
 </nav>
 
-<script src="js/config.js"></script>
+<script src="js/config.js?v=202609030002"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js"></script>
-<script src="js/presupuesto.js"></script>
+<script src="js/sheets-auth.js?v=202609030002"></script>
+<script src="js/presupuesto.js?v=202609030002"></script>
 </body>
 </html>

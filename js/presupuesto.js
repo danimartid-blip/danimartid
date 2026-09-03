@@ -15,8 +15,7 @@ function showToast(msg, isError = false) {
 
 let presRows = []; // { row, mes, tipo, categoria, subcategoria, monto } — explicit overrides only
 let movimientos = []; // full Movimientos
-let categoriaSubMap = {}; // for the "add a brand-new line" form's datalists
-let tipoState = "Gasto";
+let categoriaSubMap = {}; // categoria -> Set(subcategorias) para los datalists de "+"
 
 function currentMonthValue() {
   const d = new Date();
@@ -49,16 +48,6 @@ function formatFechaCorta(fecha) {
     if (d && mo) return `${d.padStart(2, "0")}/${mo.padStart(2, "0")}`;
   }
   return s;
-}
-
-function fillDatalist(id, values) {
-  const dl = $(id);
-  dl.innerHTML = "";
-  [...new Set(values.filter(Boolean))].sort().forEach((v) => {
-    const opt = document.createElement("option");
-    opt.value = v;
-    dl.appendChild(opt);
-  });
 }
 
 function realMonthlyTotal(tipo, categoria, subcategoria, monthKey) {
@@ -332,43 +321,51 @@ function render() {
   gastoList.innerHTML = "";
   if (gastoCats.length === 0) gastoList.innerHTML = '<div class="skeleton no-spinner">Sin datos para proponer presupuesto de gasto</div>';
   gastoCats.forEach((cat) => gastoList.appendChild(buildCategoriaBlock("Gasto", cat, mes, historyMonths)));
+  gastoList.appendChild(buildAddCategoriaBlock("Gasto", mes));
 
   const ingresoList = $("ingresoList");
   ingresoList.innerHTML = "";
   if (ingresoCats.length === 0) ingresoList.innerHTML = '<div class="skeleton no-spinner">Sin datos para proponer presupuesto de ingreso</div>';
   ingresoCats.forEach((cat) => ingresoList.appendChild(buildCategoriaBlock("Ingreso", cat, mes, historyMonths)));
+  ingresoList.appendChild(buildAddCategoriaBlock("Ingreso", mes));
 }
 
-function updateSubcategorias() {
-  const cat = $("categoria").value.trim();
-  fillDatalist("subcategoriaList", categoriaSubMap[cat] ? [...categoriaSubMap[cat]] : []);
-}
+/** "+ Agregar categoría" al final de cada lista — para categorías que aún no existen. */
+function buildAddCategoriaBlock(tipo, mes) {
+  const id = ++uid;
+  const conocidas = [...new Set(movimientos.filter((m) => m.tipo === tipo).map((m) => m.categoria))].sort();
 
-async function handleAdd() {
-  const month = $("monthPicker").value;
-  const categoria = $("categoria").value.trim();
-  const subcategoria = $("subcategoria").value.trim();
-  const monto = Number($("monto").value);
-  if (!month || !categoria || !monto) {
-    showToast("Falta mes, categoría o monto", true);
-    return;
-  }
-  const addBtn = $("addBtn");
-  addBtn.disabled = true;
-  try {
-    await window.SheetsApi.appendRow("Presupuesto!A:E", [month, tipoState, categoria, subcategoria, monto]);
-    $("categoria").value = "";
-    $("subcategoria").value = "";
-    $("monto").value = "";
-    await loadPresupuesto();
-    render();
-    showToast("Agregado ✓");
-  } catch (err) {
-    console.error(err);
-    showToast("Error al agregar", true);
-  } finally {
-    addBtn.disabled = false;
-  }
+  const wrap = document.createElement("div");
+  wrap.className = "add-cat";
+  wrap.innerHTML = `
+    <button type="button" class="btn-link add-cat-toggle">+ Agregar categoría</button>
+    <div class="add-cat-form" hidden>
+      <input type="text" class="new-cat-name" placeholder="Nombre de la categoría" list="catopts${id}" autocomplete="off">
+      <datalist id="catopts${id}">${conocidas.map((c) => `<option value="${escapeAttr(c)}"></option>`).join("")}</datalist>
+      <input type="text" class="new-cat-sub" placeholder="Subcategoría (opcional)" autocomplete="off" style="margin-top:8px;">
+      <div class="inline-form">
+        <input type="number" class="new-cat-monto" inputmode="numeric" placeholder="Monto">
+        <button type="button" class="btn-secondary new-cat-save">Agregar</button>
+      </div>
+    </div>
+  `;
+
+  const toggle = wrap.querySelector(".add-cat-toggle");
+  const form = wrap.querySelector(".add-cat-form");
+  toggle.addEventListener("click", () => {
+    form.hidden = !form.hidden;
+    toggle.textContent = form.hidden ? "+ Agregar categoría" : "Cancelar";
+    if (!form.hidden) wrap.querySelector(".new-cat-name").focus();
+  });
+  wrap.querySelector(".new-cat-save").addEventListener("click", async () => {
+    const categoria = wrap.querySelector(".new-cat-name").value.trim();
+    const subcategoria = wrap.querySelector(".new-cat-sub").value.trim();
+    const monto = Number(wrap.querySelector(".new-cat-monto").value);
+    if (!categoria || !monto) return showToast("Falta categoría o monto", true);
+    const existente = findExplicit(mes, tipo, categoria, subcategoria);
+    await upsertMonto(mes, tipo, categoria, subcategoria, monto, existente ? existente.row : null);
+  });
+  return wrap;
 }
 
 async function loadPresupuesto() {
@@ -401,14 +398,10 @@ async function loadData() {
     }));
 
   categoriaSubMap = {};
-  const cats = new Set();
   for (const m of movimientos) {
     if (!m.categoria) continue;
-    cats.add(m.categoria);
     if (m.subcategoria) (categoriaSubMap[m.categoria] ||= new Set()).add(m.subcategoria);
   }
-  presRows.forEach((r) => cats.add(r.categoria));
-  fillDatalist("categoriaList", [...cats]);
 }
 
 async function init() {
@@ -423,17 +416,6 @@ async function init() {
   render();
 
   $("monthPicker").addEventListener("change", render);
-  $("categoria").addEventListener("input", updateSubcategorias);
-  $("categoria").addEventListener("change", updateSubcategorias);
-  $("addBtn").addEventListener("click", handleAdd);
-
-  $("tipoToggle").querySelectorAll("button").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      $("tipoToggle").querySelectorAll("button").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      tipoState = btn.dataset.type;
-    });
-  });
 }
 
 init();
