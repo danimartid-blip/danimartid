@@ -89,10 +89,13 @@ async function saveBalance(rowNum) {
   const today = new Date().toISOString().slice(0, 10);
 
   try {
-    await window.SheetsApi.updateRange(`Cuentas!B${rowNum}:C${rowNum}`, [[nuevo, today]]);
-    await window.SheetsApi.appendRow("Conciliaciones!A:E", [
-      today, cuenta.nombre, anterior, nuevo, diferencia,
-    ]);
+    // RAW: guarda fechas/textos tal cual, sin que Sheets los reinterprete.
+    await window.SheetsApi.updateRange(`Cuentas!B${rowNum}:C${rowNum}`, [[nuevo, today]], "RAW");
+    await window.SheetsApi.appendRow(
+      "Conciliaciones!A:E",
+      [today, cuenta.nombre, anterior, nuevo, diferencia],
+      "RAW"
+    );
     cuenta.saldo = nuevo;
     cuenta.fecha = today;
     render();

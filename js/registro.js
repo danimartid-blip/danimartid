@@ -101,7 +101,8 @@ async function handleSubmit(e) {
       $("mesPagoOpcion").value.trim() || "",
     ];
 
-    await window.SheetsApi.appendRow("Movimientos!A:N", row);
+    // RAW: la fecha se guarda tal cual la escribimos, sin reinterpretación de Sheets.
+    await window.SheetsApi.appendRow("Movimientos!A:N", row, "RAW");
     showToast("Guardado ✓");
     resetFormForNextEntry();
     loadOptions(); // refresh datalists in case a new category was typed
