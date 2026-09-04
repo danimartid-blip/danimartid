@@ -335,18 +335,42 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
     return;
   }
 
-  const resultadoPpto = ingresoPpto - gastoPpto;
-  const liquidezPpto = liquidezReal + resultadoPpto;
-
   const [y, mo] = selectedKey.split("-");
-  label.textContent = `Liquidez proyectada · ${MESES[Number(mo)]} ${y}`;
+  const nombreMes = `${MESES[Number(mo)]} ${y}`;
+
+  // Un mes pasado no se puede "proyectar": la liquidez real de hoy ya incluye
+  // todo lo que vino después. Mostramos la real y lo decimos.
+  if (selectedKey < mesActual()) {
+    label.textContent = "Liquidez neta real";
+    grande.textContent = fmtCLP(liquidezReal);
+    grande.className = "stat-value stat-value-hero " + (liquidezReal >= 0 ? "income" : "expense");
+    linea.innerHTML = `${nombreMes} ya pasó`;
+    linea.style.color = "var(--text-muted)";
+    help.textContent = "La proyección solo aplica al mes en curso o a meses futuros.";
+    return;
+  }
+
+  // Clave: la liquidez real ya trae los movimientos reales del mes (los pagados
+  // bajaron el saldo, los por pagar subieron la deuda). Si le sumáramos el
+  // presupuesto completo encima, ese mes se contaría dos veces. Entonces se
+  // retrocede a la liquidez previa al mes y se aplica SOLO el presupuesto.
+  const delMes = movimientos.filter((m) => monthKey(m) === selectedKey);
+  const realIngresos = delMes.filter((m) => m.tipo === "Ingreso").reduce((s, m) => s + Math.abs(m.monto), 0);
+  const realGastos = delMes.filter((m) => m.tipo === "Gasto").reduce((s, m) => s + Math.abs(m.monto), 0);
+  const liquidezAntesDelMes = liquidezReal - (realIngresos - realGastos);
+
+  const resultadoPpto = ingresoPpto - gastoPpto;
+  const liquidezPpto = liquidezAntesDelMes + resultadoPpto;
+
+  label.textContent = `Liquidez proyectada · ${nombreMes}`;
   grande.textContent = fmtCLP(liquidezPpto);
   grande.className = "stat-value stat-value-hero " + (liquidezPpto >= 0 ? "income" : "expense");
 
-  const signo = resultadoPpto >= 0 ? "+" : "−";
-  linea.innerHTML = `Real hoy: <strong>${fmtCLP(liquidezReal)}</strong> · el ppto ${signo}${fmtCLP(Math.abs(resultadoPpto))}`;
-  linea.style.color = resultadoPpto >= 0 ? "var(--good)" : "var(--critical)";
-  help.textContent = "Con cuánto terminarías si cumples tu presupuesto del mes filtrado.";
+  const delta = liquidezPpto - liquidezReal;
+  const signo = delta >= 0 ? "+" : "−";
+  linea.innerHTML = `Real hoy: <strong>${fmtCLP(liquidezReal)}</strong> · ${signo}${fmtCLP(Math.abs(delta))} de aquí a fin de mes`;
+  linea.style.color = delta >= 0 ? "var(--good)" : "var(--critical)";
+  help.textContent = `Con cuánto cierras ${nombreMes} si cumples el presupuesto: se parte del saldo previo al mes (${fmtCLP(liquidezAntesDelMes)}) y se aplica solo lo presupuestado, sin lo ya gastado.`;
 }
 
 function renderPorPagarDetail(pendientes) {
