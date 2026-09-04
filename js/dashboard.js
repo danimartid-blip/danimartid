@@ -299,9 +299,11 @@ function renderStats(selectedKey) {
     list.appendChild(row);
   }
 
-  // Por pagar (global, no filtrado por mes)
+  // Por pagar (global, no filtrado por mes). Neto CON SIGNO: un "por pagar"
+  // positivo es plata que te deben (un préstamo que hiciste) y descuenta deuda,
+  // no la suma. Sumarlo en absoluto inflaba la deuda al doble de esos montos.
   const pendientes = movimientos.filter((m) => m.estado === "Por pagar");
-  const porPagar = pendientes.reduce((s, m) => s + Math.abs(m.monto), 0);
+  const porPagar = -pendientes.reduce((s, m) => s + m.monto, 0);
   $("statPorPagar").textContent = fmtCLP(porPagar);
 
   // Liquidez neta real = saldo en cuentas - lo pendiente por pagar
@@ -366,11 +368,9 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
   grande.textContent = fmtCLP(liquidezPpto);
   grande.className = "stat-value stat-value-hero " + (liquidezPpto >= 0 ? "income" : "expense");
 
-  const delta = liquidezPpto - liquidezReal;
-  const signo = delta >= 0 ? "+" : "−";
-  linea.innerHTML = `Real hoy: <strong>${fmtCLP(liquidezReal)}</strong> · ${signo}${fmtCLP(Math.abs(delta))} de aquí a fin de mes`;
-  linea.style.color = delta >= 0 ? "var(--good)" : "var(--critical)";
-  help.textContent = `Con cuánto cierras ${nombreMes} si cumples el presupuesto: se parte del saldo previo al mes (${fmtCLP(liquidezAntesDelMes)}) y se aplica solo lo presupuestado, sin lo ya gastado.`;
+  linea.innerHTML = `Saldo actual: <strong>${fmtCLP(liquidezReal)}</strong>`;
+  linea.style.color = liquidezReal >= 0 ? "var(--good)" : "var(--critical)";
+  help.textContent = `Con cuánto cierras ${nombreMes} si cumples el presupuesto: al saldo actual se le quita lo real del mes (${fmtCLP(realIngresos - realGastos)}) y se le aplica el neto presupuestado (${fmtCLP(resultadoPpto)}).`;
 }
 
 function renderPorPagarDetail(pendientes) {
@@ -382,7 +382,7 @@ function renderPorPagarDetail(pendientes) {
   const byPeriod = {};
   for (const m of withDate) {
     const key = `${m.venc.getFullYear()}-${String(m.venc.getMonth() + 1).padStart(2, "0")}`;
-    byPeriod[key] = (byPeriod[key] || 0) + Math.abs(m.monto);
+    byPeriod[key] = (byPeriod[key] || 0) - m.monto; // con signo, igual que el total
   }
   const periodosEl = $("porPagarPeriodos");
   periodosEl.innerHTML = "";
