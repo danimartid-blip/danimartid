@@ -10,6 +10,7 @@ function fmtCLP(n) {
 let movimientos = []; // { fecha, año, mes, tipo, categoria, subcategoria, medioPago, estado, monto, detalle }
 let presupuestoRows = []; // { mes, tipo, categoria, subcategoria, monto }
 let cuentas = []; // { nombre, saldo }
+let saldosMensuales = []; // { row, mes, saldoInicial } — ancla de la conciliación
 
 /** The n month-keys strictly before `mes`, oldest to newest. Mirrors presupuesto.js
  * so both pages always agree on the "proposed" budget when nothing is fijado. */
@@ -320,6 +321,7 @@ function renderStats(selectedKey) {
   liquidezEl.className = "stat-value " + (liquidez >= 0 ? "income" : "expense");
 
   renderLiquidezPresupuestada(selectedKey, liquidez);
+  renderConciliacion(selectedKey);
   renderPorPagarDetail(pendientes);
 }
 
@@ -368,6 +370,102 @@ function renderPorPagarDetail(pendientes) {
   if (Object.keys(byPeriod).length === 0) {
     periodosEl.innerHTML = '<div class="skeleton no-spinner">Sin vencimientos con fecha</div>';
   }
+}
+
+/** Mes calendario actual, "YYYY-MM". */
+function mesActual() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Conciliación: cruza lo que dicen los movimientos con el saldo real de las cuentas.
+ * Solo cuentan los movimientos "Pagado": lo "Por pagar" (tarjeta) todavía no sale
+ * de la cuenta, así que no debe afectar el saldo esperado. */
+function renderConciliacion(selectedKey) {
+  const body = $("conciliacionBody");
+  const hoy = mesActual();
+
+  if (selectedKey !== hoy) {
+    body.innerHTML = `<div class="skeleton no-spinner" style="padding:10px 0;">
+      La conciliación aplica solo al mes actual — no hay saldos históricos guardados.
+    </div>`;
+    return;
+  }
+
+  const snap = saldosMensuales.find((s) => s.mes === hoy);
+  const saldoReal = cuentas.reduce((s, c) => s + c.saldo, 0);
+
+  if (!snap) {
+    body.innerHTML = `
+      <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;margin-bottom:10px;">
+        Falta el saldo con el que arrancó este mes. Se usa como punto de partida para cuadrar
+        tus movimientos contra el saldo real de tus cuentas.
+      </div>
+      <div class="inline-form">
+        <input type="number" inputmode="numeric" id="nuevoSaldoInicial" value="${Math.round(saldoReal)}">
+        <button class="btn-secondary" id="fijarSaldoInicial">Fijar</button>
+      </div>`;
+    $("fijarSaldoInicial").addEventListener("click", async () => {
+      const val = Number($("nuevoSaldoInicial").value);
+      if (isNaN(val)) return;
+      await window.SheetsApi.appendRow("SaldoMensual!A:B", [hoy, val], "RAW");
+      await loadData();
+      renderConciliacion(selectedKey);
+    });
+    return;
+  }
+
+  const delMes = movimientos.filter((m) => monthKey(m) === hoy && (m.estado || "").trim() === "Pagado");
+  const ingresos = delMes.filter((m) => m.tipo === "Ingreso").reduce((s, m) => s + Math.abs(m.monto), 0);
+  const gastos = delMes.filter((m) => m.tipo === "Gasto").reduce((s, m) => s + Math.abs(m.monto), 0);
+  const esperado = snap.saldoInicial + ingresos - gastos;
+  const diff = saldoReal - esperado;
+
+  const abs = Math.abs(diff);
+  const pct = saldoReal ? abs / Math.abs(saldoReal) : 0;
+  let badge, clase;
+  if (abs < 1) { badge = "conciliado"; clase = "badge-good"; }
+  else if (pct <= 0.01) { badge = "diferencia menor"; clase = "badge-warning"; }
+  else { badge = "revisar"; clase = "badge-critical"; }
+
+  const fila = (etiqueta, valor, extra = "") =>
+    `<div class="category-row-top" style="padding:7px 0;font-size:13.5px;${extra}">
+      <span style="color:var(--text-secondary)">${etiqueta}</span>
+      <span class="cat-amounts">${valor}</span>
+    </div>`;
+
+  body.innerHTML = `
+    ${fila("Saldo inicial del mes", fmtCLP(snap.saldoInicial))}
+    ${fila("+ Ingresos pagados", `<span class="income">${fmtCLP(ingresos)}</span>`)}
+    ${fila("− Gastos pagados", `<span class="expense">${fmtCLP(gastos)}</span>`)}
+    ${fila("= Saldo contable esperado", `<strong>${fmtCLP(esperado)}</strong>`, "border-top:1px solid var(--grid);")}
+    ${fila("Saldo real en cuentas", `<strong>${fmtCLP(saldoReal)}</strong>`)}
+    <div class="category-row-top" style="padding:11px 0 4px;border-top:1px solid var(--grid);font-size:14.5px;">
+      <span style="font-weight:700;">Diferencia</span>
+      <span class="cat-amounts" style="font-weight:800;">
+        <span class="badge ${clase}" style="margin-right:7px;">${badge}</span>${fmtCLP(diff)}
+      </span>
+    </div>
+    <div style="font-size:11.5px;color:var(--text-muted);margin-top:10px;line-height:1.5;">
+      Solo cuenta lo <strong>pagado</strong>: lo que está "por pagar" aún no sale de tus cuentas.
+      <button class="btn-link" id="editSaldoInicial" style="font-size:11.5px;padding:0;margin-left:4px;">Ajustar saldo inicial</button>
+    </div>
+    <div class="inline-form" id="editSaldoForm" hidden>
+      <input type="number" inputmode="numeric" id="saldoInicialInput" value="${Math.round(snap.saldoInicial)}">
+      <button class="btn-secondary" id="guardarSaldoInicial">Guardar</button>
+    </div>`;
+
+  $("editSaldoInicial").addEventListener("click", () => {
+    const f = $("editSaldoForm");
+    f.hidden = !f.hidden;
+  });
+  $("guardarSaldoInicial").addEventListener("click", async () => {
+    const val = Number($("saldoInicialInput").value);
+    if (isNaN(val)) return;
+    await window.SheetsApi.updateRange(`SaldoMensual!B${snap.row}`, [[val]], "RAW");
+    await loadData();
+    renderConciliacion(selectedKey);
+  });
 }
 
 function renderPatrimonio() {
@@ -519,11 +617,15 @@ function renderTrend() {
 }
 
 async function loadData() {
-  const [movRows, presRows, cuentasRows] = await Promise.all([
+  const [movRows, presRows, cuentasRows, saldoRows] = await Promise.all([
     window.SheetsApi.readRange("Movimientos!A2:N100000"),
     window.SheetsApi.readRange("Presupuesto!A2:E10000"),
     window.SheetsApi.readRange("Cuentas!A2:C1000"),
+    window.SheetsApi.readRange("SaldoMensual!A2:B200"),
   ]);
+  saldosMensuales = saldoRows
+    .map((r, i) => ({ row: i + 2, mes: normalizeMes(r[0]), saldoInicial: Number(r[1]) || 0 }))
+    .filter((s) => s.mes);
   movimientos = parseMovimientos(movRows);
   presupuestoRows = presRows
     .filter((r) => r[0] && r[2])
