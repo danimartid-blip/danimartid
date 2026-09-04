@@ -446,7 +446,13 @@ function renderConciliacion(selectedKey) {
         <span class="badge ${clase}" style="margin-right:7px;">${badge}</span>${fmtCLP(diff)}
       </span>
     </div>
-    <div style="font-size:11.5px;color:var(--text-muted);margin-top:10px;line-height:1.5;">
+    ${abs >= 1
+      ? `<button class="btn-secondary" id="cuadrarBtn" style="width:100%;margin-top:12px;">
+           Cuadrar con un movimiento de ajuste
+         </button>`
+      : ""}
+    <div style="font-size:11.5px;color:var(--text-muted);margin-top:12px;line-height:1.55;">
+      El <strong>saldo inicial</strong> es cuánto tenías en total en tus cuentas el día que empezó el mes.
       Solo cuenta lo <strong>pagado</strong>: lo que está "por pagar" aún no sale de tus cuentas.
       <button class="btn-link" id="editSaldoInicial" style="font-size:11.5px;padding:0;margin-left:4px;">Ajustar saldo inicial</button>
     </div>
@@ -454,6 +460,42 @@ function renderConciliacion(selectedKey) {
       <input type="number" inputmode="numeric" id="saldoInicialInput" value="${Math.round(snap.saldoInicial)}">
       <button class="btn-secondary" id="guardarSaldoInicial">Guardar</button>
     </div>`;
+
+  const cuadrarBtn = $("cuadrarBtn");
+  if (cuadrarBtn) {
+    cuadrarBtn.addEventListener("click", async () => {
+      // diff < 0 -> salió plata que no está registrada -> Gasto.
+      // diff > 0 -> entró plata que no está registrada -> Ingreso.
+      const tipo = diff >= 0 ? "Ingreso" : "Gasto";
+      const magnitud = Math.round(abs);
+      if (!confirm(`Se registrará un ${tipo.toLowerCase()} de ${fmtCLP(magnitud)} con categoría "Ajuste conciliación" y la diferencia quedará en cero. ¿Continuar?`)) return;
+
+      cuadrarBtn.disabled = true;
+      cuadrarBtn.textContent = "Cuadrando…";
+      const hoyISO = new Date().toISOString().slice(0, 10);
+      const [yyyy, mm] = hoyISO.split("-");
+      try {
+        await window.SheetsApi.appendRow(
+          "Movimientos!A:N",
+          [
+            hoyISO, yyyy, String(Number(mm)), tipo,
+            "Ajuste conciliación", "Ajuste", "", "Pagado",
+            tipo === "Gasto" ? -magnitud : magnitud,
+            "Ajuste de conciliación",
+            "", "", "", "",
+          ],
+          "RAW"
+        );
+        await loadData();
+        renderStats(selectedKey);
+        renderPatrimonio();
+      } catch (err) {
+        console.error(err);
+        cuadrarBtn.disabled = false;
+        cuadrarBtn.textContent = "Cuadrar con un movimiento de ajuste";
+      }
+    });
+  }
 
   $("editSaldoInicial").addEventListener("click", () => {
     const f = $("editSaldoForm");
