@@ -625,11 +625,9 @@ select.native, input[type="month"] {
     var(--bg);
 }
 .splash-icon {
-  width: 68px; height: 68px; border-radius: 20px;
-  background: linear-gradient(145deg, var(--accent), var(--accent-ink));
-  color: #fff; font-size: 32px; font-weight: 800;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 10px 30px -8px color-mix(in srgb, var(--accent) 60%, transparent);
+  width: 76px; height: 76px; border-radius: 22px;
+  display: block;
+  box-shadow: 0 14px 36px -10px color-mix(in srgb, var(--accent) 65%, transparent);
 }
 .splash h1 { font-size: 25px; margin: 0; font-weight: 780; letter-spacing: -0.03em; }
 .splash p { color: var(--text-muted); font-size: 13.5px; margin: 0; max-width: 250px; line-height: 1.5; }

@@ -447,9 +447,20 @@ function renderConciliacion(selectedKey) {
       </span>
     </div>
     ${abs >= 1
-      ? `<button class="btn-secondary" id="cuadrarBtn" style="width:100%;margin-top:12px;">
-           Cuadrar con un movimiento de ajuste
-         </button>`
+      ? `<div style="margin-top:14px;">
+           <div class="stat-label" style="margin-bottom:8px;">Cuadrar registrando</div>
+           <div style="display:flex;gap:8px;flex-wrap:wrap;">
+             ${diff > 0
+               ? `<button class="btn-secondary" id="cuadrarInteres" style="flex:1;min-width:150px;">Interés cuenta remunerada</button>`
+               : ""}
+             <button class="btn-secondary" id="cuadrarAjuste" style="flex:1;min-width:150px;">Ajuste de conciliación</button>
+           </div>
+           ${diff < 0
+             ? `<div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.5;">
+                  Falta plata respecto a lo registrado, así que no puede ser interés (el interés suma).
+                </div>`
+             : ""}
+         </div>`
       : ""}
     <div style="font-size:11.5px;color:var(--text-muted);margin-top:12px;line-height:1.55;">
       El <strong>saldo inicial</strong> es cuánto tenías en total en tus cuentas el día que empezó el mes.
@@ -461,40 +472,62 @@ function renderConciliacion(selectedKey) {
       <button class="btn-secondary" id="guardarSaldoInicial">Guardar</button>
     </div>`;
 
-  const cuadrarBtn = $("cuadrarBtn");
-  if (cuadrarBtn) {
-    cuadrarBtn.addEventListener("click", async () => {
-      // diff < 0 -> salió plata que no está registrada -> Gasto.
-      // diff > 0 -> entró plata que no está registrada -> Ingreso.
-      const tipo = diff >= 0 ? "Ingreso" : "Gasto";
-      const magnitud = Math.round(abs);
-      if (!confirm(`Se registrará un ${tipo.toLowerCase()} de ${fmtCLP(magnitud)} con categoría "Ajuste conciliación" y la diferencia quedará en cero. ¿Continuar?`)) return;
+  /** Registra un movimiento que absorbe exactamente la diferencia y deja la
+   * conciliación en cero. diff > 0 -> entró plata sin registrar (Ingreso);
+   * diff < 0 -> salió plata sin registrar (Gasto). */
+  const registrarCuadre = async (btn, { categoria, subcategoria, medioPago, detalle }) => {
+    const tipo = diff >= 0 ? "Ingreso" : "Gasto";
+    const magnitud = Math.round(abs);
+    if (!confirm(`Se registrará un ${tipo.toLowerCase()} de ${fmtCLP(magnitud)} como "${categoria} / ${subcategoria}" y la diferencia quedará en cero. ¿Continuar?`)) return;
 
-      cuadrarBtn.disabled = true;
-      cuadrarBtn.textContent = "Cuadrando…";
-      const hoyISO = new Date().toISOString().slice(0, 10);
-      const [yyyy, mm] = hoyISO.split("-");
-      try {
-        await window.SheetsApi.appendRow(
-          "Movimientos!A:N",
-          [
-            hoyISO, yyyy, String(Number(mm)), tipo,
-            "Ajuste conciliación", "Ajuste", "", "Pagado",
-            tipo === "Gasto" ? -magnitud : magnitud,
-            "Ajuste de conciliación",
-            "", "", "", "",
-          ],
-          "RAW"
-        );
-        await loadData();
-        renderStats(selectedKey);
-        renderPatrimonio();
-      } catch (err) {
-        console.error(err);
-        cuadrarBtn.disabled = false;
-        cuadrarBtn.textContent = "Cuadrar con un movimiento de ajuste";
-      }
-    });
+    const textoOriginal = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Cuadrando…";
+    const hoyISO = new Date().toISOString().slice(0, 10);
+    const [yyyy, mm] = hoyISO.split("-");
+    try {
+      await window.SheetsApi.appendRow(
+        "Movimientos!A:N",
+        [
+          hoyISO, yyyy, String(Number(mm)), tipo,
+          categoria, subcategoria, medioPago, "Pagado",
+          tipo === "Gasto" ? -magnitud : magnitud,
+          detalle,
+          "", "", "", "",
+        ],
+        "RAW"
+      );
+      await loadData();
+      renderStats(selectedKey);
+      renderPatrimonio();
+    } catch (err) {
+      console.error(err);
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
+  };
+
+  const btnInteres = $("cuadrarInteres");
+  if (btnInteres) {
+    btnInteres.addEventListener("click", () =>
+      registrarCuadre(btnInteres, {
+        categoria: "Sueldo",
+        subcategoria: "Cuenta remunerada",
+        medioPago: "Mercado Pago",
+        detalle: "Interes",
+      })
+    );
+  }
+  const btnAjuste = $("cuadrarAjuste");
+  if (btnAjuste) {
+    btnAjuste.addEventListener("click", () =>
+      registrarCuadre(btnAjuste, {
+        categoria: "Ajuste conciliación",
+        subcategoria: "Ajuste",
+        medioPago: "",
+        detalle: "Ajuste de conciliación",
+      })
+    );
   }
 
   $("editSaldoInicial").addEventListener("click", () => {
