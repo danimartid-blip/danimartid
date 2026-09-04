@@ -207,7 +207,7 @@ header.topbar h1 {
 }
 
 /* chip presupuestado bajo el hero */
-#liquidezPptoLine {
+#liquidezRealLine {
   display: inline-flex;
   align-items: center;
   gap: 6px;

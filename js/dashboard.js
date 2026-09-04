@@ -245,23 +245,14 @@ function wireSubcategoryToggles(scope) {
 
 function renderStats(selectedKey) {
   const inMonth = movimientos.filter((m) => monthKey(m) === selectedKey);
-  const ingresos = inMonth.filter((m) => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
-  const gastos = inMonth.filter((m) => m.tipo === "Gasto").reduce((s, m) => s + Math.abs(m.monto), 0);
-  const neto = ingresos - gastos;
 
-  $("statIngresos").textContent = fmtCLP(ingresos);
-  $("statGastos").textContent = fmtCLP(gastos);
-  const netoEl = $("statNeto");
-  netoEl.textContent = fmtCLP(neto);
-  netoEl.className = "stat-value " + (neto >= 0 ? "income" : "expense");
-
-  // Categorías (gasto) vs presupuesto
+  // Categorías (gasto) vs presupuesto — todas, sin recortar.
   const byCat = {};
   for (const m of inMonth) {
     if (m.tipo !== "Gasto") continue;
     byCat[m.categoria] = (byCat[m.categoria] || 0) + Math.abs(m.monto);
   }
-  const sorted = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const sorted = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
   const list = $("categoryList");
   list.innerHTML = "";
   if (sorted.length === 0) {
@@ -313,32 +304,49 @@ function renderStats(selectedKey) {
   const porPagar = pendientes.reduce((s, m) => s + Math.abs(m.monto), 0);
   $("statPorPagar").textContent = fmtCLP(porPagar);
 
-  // Liquidez neta = saldo en cuentas - lo pendiente por pagar
+  // Liquidez neta real = saldo en cuentas - lo pendiente por pagar
   const totalCuentas = cuentas.reduce((s, c) => s + c.saldo, 0);
-  const liquidezEl = $("statLiquidez");
   const liquidez = totalCuentas - porPagar;
-  liquidezEl.textContent = fmtCLP(liquidez);
-  liquidezEl.className = "stat-value " + (liquidez >= 0 ? "income" : "expense");
 
   renderLiquidezPresupuestada(selectedKey, liquidez);
   renderConciliacion(selectedKey);
   renderPorPagarDetail(pendientes);
 }
 
+/** Protagonista: con cuánto terminarías si cumples el presupuesto del mes filtrado.
+ * La liquidez real de hoy queda como dato secundario debajo. */
 function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
-  const el = $("liquidezPptoLine");
+  const grande = $("statLiquidezPpto");
+  const linea = $("liquidezRealLine");
+  const label = $("liquidezPptoLabel");
+  const help = $("liquidezHelp");
+
   const ingresoPpto = totalBudgetForTipo("Ingreso", selectedKey);
   const gastoPpto = totalBudgetForTipo("Gasto", selectedKey);
-  if (ingresoPpto === 0 && gastoPpto === 0) {
-    el.textContent = "(Sin datos para proponer presupuesto este mes)";
-    el.style.color = "var(--text-muted)";
+  const hayPpto = ingresoPpto !== 0 || gastoPpto !== 0;
+
+  if (!hayPpto) {
+    label.textContent = "Liquidez neta real";
+    grande.textContent = fmtCLP(liquidezReal);
+    grande.className = "stat-value stat-value-hero " + (liquidezReal >= 0 ? "income" : "expense");
+    linea.textContent = "Sin presupuesto para este mes";
+    linea.style.color = "var(--text-muted)";
+    help.textContent = "Saldo en cuentas menos lo pendiente por pagar.";
     return;
   }
+
   const resultadoPpto = ingresoPpto - gastoPpto;
   const liquidezPpto = liquidezReal + resultadoPpto;
 
-  el.textContent = `(Presupuestada: ${fmtCLP(liquidezPpto)})`;
-  el.style.color = resultadoPpto >= 0 ? "var(--good)" : "var(--critical)";
+  const [y, mo] = selectedKey.split("-");
+  label.textContent = `Liquidez proyectada · ${MESES[Number(mo)]} ${y}`;
+  grande.textContent = fmtCLP(liquidezPpto);
+  grande.className = "stat-value stat-value-hero " + (liquidezPpto >= 0 ? "income" : "expense");
+
+  const signo = resultadoPpto >= 0 ? "+" : "−";
+  linea.innerHTML = `Real hoy: <strong>${fmtCLP(liquidezReal)}</strong> · el ppto ${signo}${fmtCLP(Math.abs(resultadoPpto))}`;
+  linea.style.color = resultadoPpto >= 0 ? "var(--good)" : "var(--critical)";
+  help.textContent = "Con cuánto terminarías si cumples tu presupuesto del mes filtrado.";
 }
 
 function renderPorPagarDetail(pendientes) {
@@ -378,6 +386,33 @@ function mesActual() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+const mesSiguiente = (mes) => {
+  const [y, m] = mes.split("-").map(Number);
+  const d = new Date(y, m, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
+/** Saldo con el que arranca un mes. Si no está anotado, se deduce encadenando
+ * desde el último ancla conocido: cierre de un mes = inicio del siguiente.
+ * Así el dato queda embebido y no hay que escribirlo a mano cada mes. */
+function saldoInicialDe(mes) {
+  const exacto = saldosMensuales.find((s) => s.mes === mes);
+  if (exacto) return exacto.saldoInicial;
+
+  const previos = saldosMensuales.filter((s) => s.mes < mes).sort((a, b) => (a.mes < b.mes ? 1 : -1));
+  if (previos.length === 0) return null;
+
+  let cursor = previos[0].mes;
+  let saldo = previos[0].saldoInicial;
+  while (cursor !== mes) {
+    const pagados = movimientos.filter((m) => monthKey(m) === cursor && (m.estado || "").trim() === "Pagado");
+    saldo += pagados.filter((m) => m.tipo === "Ingreso").reduce((s, m) => s + Math.abs(m.monto), 0);
+    saldo -= pagados.filter((m) => m.tipo === "Gasto").reduce((s, m) => s + Math.abs(m.monto), 0);
+    cursor = mesSiguiente(cursor);
+  }
+  return saldo;
+}
+
 /** Conciliación: cruza lo que dicen los movimientos con el saldo real de las cuentas.
  * Solo cuentan los movimientos "Pagado": lo "Por pagar" (tarjeta) todavía no sale
  * de la cuenta, así que no debe afectar el saldo esperado. */
@@ -392,33 +427,20 @@ function renderConciliacion(selectedKey) {
     return;
   }
 
-  const snap = saldosMensuales.find((s) => s.mes === hoy);
+  const saldoInicial = saldoInicialDe(hoy);
   const saldoReal = cuentas.reduce((s, c) => s + c.saldo, 0);
 
-  if (!snap) {
-    body.innerHTML = `
-      <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;margin-bottom:10px;">
-        Falta el saldo con el que arrancó este mes. Se usa como punto de partida para cuadrar
-        tus movimientos contra el saldo real de tus cuentas.
-      </div>
-      <div class="inline-form">
-        <input type="number" inputmode="numeric" id="nuevoSaldoInicial" value="${Math.round(saldoReal)}">
-        <button class="btn-secondary" id="fijarSaldoInicial">Fijar</button>
-      </div>`;
-    $("fijarSaldoInicial").addEventListener("click", async () => {
-      const val = Number($("nuevoSaldoInicial").value);
-      if (isNaN(val)) return;
-      await window.SheetsApi.appendRow("SaldoMensual!A:B", [hoy, val], "RAW");
-      await loadData();
-      renderConciliacion(selectedKey);
-    });
+  if (saldoInicial === null) {
+    body.innerHTML = `<div class="skeleton no-spinner" style="padding:10px 0;">
+      Falta el ancla de saldo inicial en la pestaña SaldoMensual de la planilla.
+    </div>`;
     return;
   }
 
   const delMes = movimientos.filter((m) => monthKey(m) === hoy && (m.estado || "").trim() === "Pagado");
   const ingresos = delMes.filter((m) => m.tipo === "Ingreso").reduce((s, m) => s + Math.abs(m.monto), 0);
   const gastos = delMes.filter((m) => m.tipo === "Gasto").reduce((s, m) => s + Math.abs(m.monto), 0);
-  const esperado = snap.saldoInicial + ingresos - gastos;
+  const esperado = saldoInicial + ingresos - gastos;
   const diff = saldoReal - esperado;
 
   const abs = Math.abs(diff);
@@ -435,7 +457,7 @@ function renderConciliacion(selectedKey) {
     </div>`;
 
   body.innerHTML = `
-    ${fila("Saldo inicial del mes", fmtCLP(snap.saldoInicial))}
+    ${fila("Saldo inicial del mes", fmtCLP(saldoInicial))}
     ${fila("+ Ingresos pagados", `<span class="income">${fmtCLP(ingresos)}</span>`)}
     ${fila("− Gastos pagados", `<span class="expense">${fmtCLP(gastos)}</span>`)}
     ${fila("= Saldo contable esperado", `<strong>${fmtCLP(esperado)}</strong>`, "border-top:1px solid var(--grid);")}
@@ -463,13 +485,8 @@ function renderConciliacion(selectedKey) {
          </div>`
       : ""}
     <div style="font-size:11.5px;color:var(--text-muted);margin-top:12px;line-height:1.55;">
-      El <strong>saldo inicial</strong> es cuánto tenías en total en tus cuentas el día que empezó el mes.
-      Solo cuenta lo <strong>pagado</strong>: lo que está "por pagar" aún no sale de tus cuentas.
-      <button class="btn-link" id="editSaldoInicial" style="font-size:11.5px;padding:0;margin-left:4px;">Ajustar saldo inicial</button>
-    </div>
-    <div class="inline-form" id="editSaldoForm" hidden>
-      <input type="number" inputmode="numeric" id="saldoInicialInput" value="${Math.round(snap.saldoInicial)}">
-      <button class="btn-secondary" id="guardarSaldoInicial">Guardar</button>
+      El <strong>saldo inicial</strong> se arrastra solo: es el cierre del mes anterior.
+      Solo cuenta lo <strong>pagado</strong> — lo que está "por pagar" aún no sale de tus cuentas.
     </div>`;
 
   /** Registra un movimiento que absorbe exactamente la diferencia y deja la
@@ -530,17 +547,6 @@ function renderConciliacion(selectedKey) {
     );
   }
 
-  $("editSaldoInicial").addEventListener("click", () => {
-    const f = $("editSaldoForm");
-    f.hidden = !f.hidden;
-  });
-  $("guardarSaldoInicial").addEventListener("click", async () => {
-    const val = Number($("saldoInicialInput").value);
-    if (isNaN(val)) return;
-    await window.SheetsApi.updateRange(`SaldoMensual!B${snap.row}`, [[val]], "RAW");
-    await loadData();
-    renderConciliacion(selectedKey);
-  });
 }
 
 function renderPatrimonio() {

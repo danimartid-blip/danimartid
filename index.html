@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202609032202">
+<link rel="stylesheet" href="css/styles.css?v=202609032206">
 </head>
 <body>
 
@@ -23,30 +23,12 @@
 
   <div id="dashboard" hidden>
     <div class="card card-hero">
-      <div class="stat-label">Liquidez neta</div>
-      <div class="stat-value stat-value-hero" id="statLiquidez">$0</div>
-      <div id="liquidezPptoLine"></div>
-      <p style="font-size:12px;color:var(--text-muted);margin:12px 0 0;line-height:1.5;">Saldo en cuentas menos lo pendiente por pagar — lo que te queda si pagaras toda la deuda hoy.</p>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Balance del mes</div>
-      <div class="balance-equation">
-        <div class="balance-term">
-          <div class="stat-label">Ingresos</div>
-          <div class="stat-value income" id="statIngresos">$0</div>
-        </div>
-        <div class="balance-op">−</div>
-        <div class="balance-term">
-          <div class="stat-label">Gastos</div>
-          <div class="stat-value expense" id="statGastos">$0</div>
-        </div>
-        <div class="balance-op">=</div>
-        <div class="balance-term">
-          <div class="stat-label">Balance</div>
-          <div class="stat-value" id="statNeto">$0</div>
-        </div>
-      </div>
+      <div class="stat-label" id="liquidezPptoLabel">Liquidez proyectada</div>
+      <div class="stat-value stat-value-hero" id="statLiquidezPpto">$0</div>
+      <div id="liquidezRealLine"></div>
+      <p style="font-size:12px;color:var(--text-muted);margin:12px 0 0;line-height:1.5;" id="liquidezHelp">
+        Con cuánto terminarías si cumples tu presupuesto del mes filtrado.
+      </p>
     </div>
 
     <div class="card">
@@ -113,9 +95,9 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202609032202"></script>
+<script src="js/config.js?v=202609032206"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202609032202"></script>
-<script src="js/dashboard.js?v=202609032202"></script>
+<script src="js/sheets-auth.js?v=202609032206"></script>
+<script src="js/dashboard.js?v=202609032206"></script>
 </body>
 </html>
