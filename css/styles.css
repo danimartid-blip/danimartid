@@ -487,6 +487,25 @@ input[type="number"] { font-variant-numeric: tabular-nums; }
   -webkit-tap-highlight-color: transparent;
 }
 
+/* atajos de fecha de vencimiento (según el día en que vence cada tarjeta) */
+.venc-chips { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 9px; }
+.venc-chip {
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  transition: all .16s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.venc-chip:active { transform: scale(0.96); }
+.venc-chip.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .advanced-section { margin-top: 10px; padding-top: 6px; border-top: 1px dashed var(--border-strong); }
 .advanced-section[hidden] { display: none; }
 

@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202609032240">
+<link rel="stylesheet" href="css/styles.css?v=202609042241">
 </head>
 <body>
 
@@ -53,6 +53,12 @@
       </div>
     </div>
 
+    <div id="vencSection" hidden>
+      <label for="fechaVencimiento">Fecha de vencimiento <span style="color:var(--expense)">obligatoria</span></label>
+      <div class="venc-chips" id="vencChips"></div>
+      <input type="date" id="fechaVencimiento">
+    </div>
+
     <label for="detalle">Detalle</label>
     <input type="text" id="detalle" placeholder="Ej: Supermercado Lider" autocomplete="off">
 
@@ -66,9 +72,6 @@
 
       <label for="mesPagoOpcion">Mes pago opción</label>
       <input type="text" id="mesPagoOpcion" autocomplete="off">
-
-      <label for="fechaVencimiento">Fecha de vencimiento</label>
-      <input type="date" id="fechaVencimiento">
     </div>
 
     <button type="submit" class="btn-primary" id="submitBtn">Guardar</button>
@@ -98,9 +101,9 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202609032240"></script>
+<script src="js/config.js?v=202609042241"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202609032240"></script>
-<script src="js/registro.js?v=202609032240"></script>
+<script src="js/sheets-auth.js?v=202609042241"></script>
+<script src="js/registro.js?v=202609042241"></script>
 </body>
 </html>
