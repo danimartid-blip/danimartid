@@ -10,7 +10,6 @@ function fmtCLP(n) {
 let movimientos = []; // { fecha, año, mes, tipo, categoria, subcategoria, medioPago, estado, monto, detalle }
 let presupuestoRows = []; // { mes, tipo, categoria, subcategoria, monto }
 let cuentas = []; // { nombre, saldo }
-let saldosMensuales = []; // { row, mes, saldoInicial } — ancla de la conciliación
 
 /** The n month-keys strictly before `mes`, oldest to newest. Mirrors presupuesto.js
  * so both pages always agree on the "proposed" budget when nothing is fijado. */
@@ -582,68 +581,28 @@ function mesActual() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-const mesSiguiente = (mes) => {
-  const [y, m] = mes.split("-").map(Number);
-  const d = new Date(y, m, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-};
-
-/** Saldo con el que arranca un mes. Si no está anotado, se deduce encadenando
- * desde el último ancla conocido: cierre de un mes = inicio del siguiente.
- * Así el dato queda embebido y no hay que escribirlo a mano cada mes. */
-function saldoInicialDe(mes) {
-  const exacto = saldosMensuales.find((s) => s.mes === mes);
-  if (exacto) return exacto.saldoInicial;
-
-  const previos = saldosMensuales.filter((s) => s.mes < mes).sort((a, b) => (a.mes < b.mes ? 1 : -1));
-  if (previos.length === 0) return null;
-
-  let cursor = previos[0].mes;
-  let saldo = previos[0].saldoInicial;
-  while (cursor !== mes) {
-    const pagados = movimientos.filter((m) => monthKey(m) === cursor && (m.estado || "").trim() === "Pagado");
-    saldo += pagados.filter((m) => m.tipo === "Ingreso").reduce((s, m) => s + Math.abs(m.monto), 0);
-    saldo -= pagados.filter((m) => m.tipo === "Gasto").reduce((s, m) => s + Math.abs(m.monto), 0);
-    cursor = mesSiguiente(cursor);
-  }
-  return saldo;
-}
-
 /** Conciliación: cruza lo que dicen los movimientos con el saldo real de las cuentas.
  * Solo cuentan los movimientos "Pagado": lo "Por pagar" (tarjeta) todavía no sale
  * de la cuenta, así que no debe afectar el saldo esperado. */
 function renderConciliacion(selectedKey) {
   const body = $("conciliacionBody");
-  const hoy = mesActual();
-
-  if (selectedKey !== hoy) {
-    body.innerHTML = `<div class="skeleton no-spinner" style="padding:10px 0;">
-      La conciliación aplica solo al mes actual — no hay saldos históricos guardados.
-    </div>`;
-    return;
-  }
-
-  const saldoInicial = saldoInicialDe(hoy);
   const saldoReal = cuentas.reduce((s, c) => s + c.saldo, 0);
 
-  if (saldoInicial === null) {
-    body.innerHTML = `<div class="skeleton no-spinner" style="padding:10px 0;">
-      Falta el ancla de saldo inicial en la pestaña SaldoMensual de la planilla.
-    </div>`;
-    return;
-  }
-
-  const delMes = movimientos.filter((m) => monthKey(m) === hoy && (m.estado || "").trim() === "Pagado");
-  const ingresos = delMes.filter((m) => m.tipo === "Ingreso").reduce((s, m) => s + Math.abs(m.monto), 0);
-  const gastos = delMes.filter((m) => m.tipo === "Gasto").reduce((s, m) => s + Math.abs(m.monto), 0);
-  const esperado = saldoInicial + ingresos - gastos;
+  // Modelo acumulado (el mismo del Resumen original): la suma de TODO lo pagado
+  // desde siempre debe igualar el saldo de las cuentas. Es inmune al mes en que
+  // se hizo la compra: un "por pagar" entra al acumulado justo cuando se paga,
+  // que es cuando la plata sale del banco. Conciliar por mes fallaba en cada
+  // pago de tarjeta, porque se paga en un mes lo comprado en otro.
+  const pagados = movimientos.filter((m) => (m.estado || "").trim() === "Pagado");
+  const esperado = pagados.reduce((s, m) => s + m.monto, 0);
+  const ingresos = pagados.filter((m) => m.tipo === "Ingreso").reduce((s, m) => s + Math.abs(m.monto), 0);
+  const gastos = pagados.filter((m) => m.tipo === "Gasto").reduce((s, m) => s + Math.abs(m.monto), 0);
   const diff = saldoReal - esperado;
 
   const abs = Math.abs(diff);
-  const pct = saldoReal ? abs / Math.abs(saldoReal) : 0;
   let badge, clase;
-  if (abs < 1) { badge = "conciliado"; clase = "badge-good"; }
-  else if (pct <= 0.01) { badge = "diferencia menor"; clase = "badge-warning"; }
+  if (abs < 10) { badge = "conciliado"; clase = "badge-good"; }
+  else if (abs < 1000) { badge = "diferencia menor"; clase = "badge-warning"; }
   else { badge = "revisar"; clase = "badge-critical"; }
 
   const fila = (etiqueta, valor, extra = "") =>
@@ -653,10 +612,9 @@ function renderConciliacion(selectedKey) {
     </div>`;
 
   body.innerHTML = `
-    ${fila("Saldo inicial del mes", fmtCLP(saldoInicial))}
-    ${fila("+ Ingresos pagados", `<span class="income">${fmtCLP(ingresos)}</span>`)}
-    ${fila("− Gastos pagados", `<span class="expense">${fmtCLP(gastos)}</span>`)}
-    ${fila("= Saldo contable esperado", `<strong>${fmtCLP(esperado)}</strong>`, "border-top:1px solid var(--grid);")}
+    ${fila("Ingresos pagados (histórico)", `<span class="income">${fmtCLP(ingresos)}</span>`)}
+    ${fila("− Gastos pagados (histórico)", `<span class="expense">${fmtCLP(gastos)}</span>`)}
+    ${fila("= Saldo contable", `<strong>${fmtCLP(esperado)}</strong>`, "border-top:1px solid var(--grid);")}
     ${fila("Saldo real en cuentas", `<strong>${fmtCLP(saldoReal)}</strong>`)}
     <div class="category-row-top" style="padding:11px 0 4px;border-top:1px solid var(--grid);font-size:14.5px;">
       <span style="font-weight:700;">Diferencia</span>
@@ -681,8 +639,9 @@ function renderConciliacion(selectedKey) {
          </div>`
       : ""}
     <div style="font-size:11.5px;color:var(--text-muted);margin-top:12px;line-height:1.55;">
-      El <strong>saldo inicial</strong> se arrastra solo: es el cierre del mes anterior.
-      Solo cuenta lo <strong>pagado</strong> — lo que está "por pagar" aún no sale de tus cuentas.
+      Compara <strong>todo lo pagado desde siempre</strong> contra el saldo real de tus cuentas.
+      Lo que está "por pagar" no cuenta: aún no sale del banco. Cuando pagas una tarjeta,
+      esos movimientos entran acá automáticamente.
     </div>`;
 
   /** Registra un movimiento que absorbe exactamente la diferencia y deja la
@@ -894,15 +853,11 @@ function renderTrend() {
 }
 
 async function loadData() {
-  const [movRows, presRows, cuentasRows, saldoRows] = await Promise.all([
+  const [movRows, presRows, cuentasRows] = await Promise.all([
     window.SheetsApi.readRange("Movimientos!A2:N100000"),
     window.SheetsApi.readRange("Presupuesto!A2:E10000"),
     window.SheetsApi.readRange("Cuentas!A2:C1000"),
-    window.SheetsApi.readRange("SaldoMensual!A2:B200"),
   ]);
-  saldosMensuales = saldoRows
-    .map((r, i) => ({ row: i + 2, mes: normalizeMes(r[0]), saldoInicial: Number(r[1]) || 0 }))
-    .filter((s) => s.mes);
   movimientos = parseMovimientos(movRows);
   presupuestoRows = presRows
     .filter((r) => r[0] && r[2])
