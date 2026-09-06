@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202609062029">
+<link rel="stylesheet" href="css/styles.css?v=202609062037">
 </head>
 <body>
 
@@ -61,17 +61,14 @@
     </div>
 
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" id="porPagarHeader">
-        <div>
-          <div class="stat-label">Por pagar (pendiente)</div>
-          <div class="stat-value" style="color:var(--serious)" id="statPorPagar">$0</div>
-        </div>
-        <button class="btn-link" id="porPagarToggle">Ver detalle ▾</button>
-      </div>
-      <div id="porPagarDetail" hidden style="margin-top:12px;">
-        <div class="card-title" style="margin-bottom:6px;">En qué meses se paga</div>
-        <div id="porPagarPeriodos"></div>
-        <div class="card-title" style="margin:18px 0 6px;">Pagar un estado de cuenta</div>
+      <div class="stat-label">Por pagar (pendiente)</div>
+      <div class="stat-value" style="color:var(--serious)" id="statPorPagar">$0</div>
+
+      <div class="card-title" style="margin:16px 0 6px;">En qué meses se paga</div>
+      <div id="porPagarPeriodos"></div>
+
+      <button class="btn-link" id="porPagarToggle" style="margin-top:6px;">Ver detalle por banco/tarjeta ▾</button>
+      <div id="porPagarDetail" hidden style="margin-top:8px;">
         <div id="pagarTarjetas"></div>
       </div>
     </div>
@@ -97,9 +94,9 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202609062029"></script>
+<script src="js/config.js?v=202609062037"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202609062029"></script>
-<script src="js/dashboard.js?v=202609062029"></script>
+<script src="js/sheets-auth.js?v=202609062037"></script>
+<script src="js/dashboard.js?v=202609062037"></script>
 </body>
 </html>

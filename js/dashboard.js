@@ -888,12 +888,11 @@ async function init() {
 
   $("monthSelect").addEventListener("change", (e) => renderStats(e.target.value));
 
-  const toggleDetail = () => {
+  $("porPagarToggle").addEventListener("click", () => {
     const detail = $("porPagarDetail");
     detail.hidden = !detail.hidden;
-    $("porPagarToggle").textContent = detail.hidden ? "Ver detalle ▾" : "Ocultar ▴";
-  };
-  $("porPagarHeader").addEventListener("click", toggleDetail);
+    $("porPagarToggle").textContent = detail.hidden ? "Ver detalle por banco/tarjeta ▾" : "Ocultar ▴";
+  });
 }
 
 init();
