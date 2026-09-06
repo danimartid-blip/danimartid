@@ -32,22 +32,44 @@ function fillDatalist(id, values) {
 
 let categoriaSubMap = {};
 let diaVencPorMedio = {}; // "Limited" -> 10 (día del mes en que suele vencer)
+let historialPorMedio = {}; // "Limited" -> [{fecha, estado, monto, detalle}, ...]
+
+/** Acepta "3/9/2026" o "2026-09-03" y devuelve un Date comparable (o null). */
+function parseAnyFecha(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return null;
+  if (s.includes("/")) {
+    const [d, m, y] = s.split("/");
+    return new Date(Number(y), Number(m) - 1, Number(d));
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split("-");
+    return new Date(Number(y), Number(m) - 1, Number(d));
+  }
+  return null;
+}
 
 async function loadOptions() {
   try {
-    // E=Categoria F=Subcategoria G=Medio_pago H=Estado I=Monto J=Detalle K=Fecha_vencimiento
-    const rows = await window.SheetsApi.readRange("Movimientos!E2:K100000");
+    // A=Fecha E=Categoria F=Subcategoria G=Medio_pago H=Estado I=Monto J=Detalle K=Fecha_vencimiento
+    const rows = await window.SheetsApi.readRange("Movimientos!A2:K100000");
     const categorias = [];
     const medios = [];
     categoriaSubMap = {};
+    historialPorMedio = {};
     const diasPorMedio = {}; // medio -> { dia: veces }
     for (const row of rows) {
-      const [cat, sub, medio, estado, , , venc] = row;
+      const [fecha, , , , cat, sub, medio, estado, monto, detalle, venc] = row;
       if (cat) {
         categorias.push(cat);
         if (sub) (categoriaSubMap[cat] ||= new Set()).add(sub);
       }
-      if (medio) medios.push(medio);
+      if (medio) {
+        medios.push(medio);
+        (historialPorMedio[medio] ||= []).push({
+          fecha, estado: (estado || "").trim(), monto: Number(monto) || 0, detalle: detalle || cat || "",
+        });
+      }
       // aprende el día de vencimiento típico de cada tarjeta
       if (medio && (estado || "").trim() === "Por pagar" && venc) {
         const dia = Number(String(venc).trim().split(/[-/]/)[0]);
@@ -111,6 +133,58 @@ function actualizarVencSection() {
   const esPorPagar = state.estado === "Por pagar";
   $("vencSection").hidden = !esPorPagar;
   if (esPorPagar) renderVencChips();
+}
+
+const MESES_CORTO2 = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+function fechaLegible(raw) {
+  const d = parseAnyFecha(raw);
+  if (!d) return raw;
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const dias = Math.round((hoy - d) / 86400000);
+  if (dias === 0) return "hoy";
+  if (dias === 1) return "ayer";
+  if (dias > 1 && dias < 7) return `hace ${dias}d`;
+  return `${d.getDate()} ${MESES_CORTO2[d.getMonth()]}`;
+}
+
+/** El objetivo: que abras la tarjeta en el celu, veas su lista de compras, y
+ * sepas al toque hasta dónde ya está cargado en la app sin tener que adivinar. */
+function renderUltimosMovimientos() {
+  const medio = $("medioPago").value.trim();
+  const box = $("ultimosMovMedio");
+  if (!medio) { box.hidden = true; return; }
+
+  const hist = (historialPorMedio[medio] || [])
+    .slice()
+    .sort((a, b) => (parseAnyFecha(b.fecha) || 0) - (parseAnyFecha(a.fecha) || 0))
+    .slice(0, 6);
+
+  if (hist.length === 0) {
+    box.hidden = true;
+    return;
+  }
+
+  box.hidden = false;
+  box.innerHTML = `
+    <div class="card-title" style="margin-bottom:8px;">Últimos registrados en ${medio}</div>
+    ${hist
+      .map(
+        (m) => `<div class="category-row-top" style="padding:5px 0;font-size:12.5px;">
+          <span style="color:var(--text-secondary)">
+            <strong>${fechaLegible(m.fecha)}</strong> · ${m.detalle}
+            ${m.estado === "Por pagar" ? '<span class="badge badge-muted" style="margin-left:4px;">por pagar</span>' : ""}
+          </span>
+          <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
+        </div>`
+      )
+      .join("")}
+  `;
+}
+
+function fmtCLP(n) {
+  const sign = n < 0 ? "-" : "";
+  return sign + "$" + Math.round(Math.abs(n)).toLocaleString("es-CL");
 }
 
 function updateSubcategorias() {
@@ -217,7 +291,8 @@ async function handleSubmit(e) {
     await window.SheetsApi.appendRow("Movimientos!A:N", row, "RAW");
     showToast("Guardado ✓");
     resetFormForNextEntry();
-    loadOptions(); // refresh datalists in case a new category was typed
+    await loadOptions(); // refresh datalists in case a new category was typed
+    renderUltimosMovimientos(); // así ves de una que quedó registrado
   } catch (err) {
     console.error(err);
     showToast("Error al guardar", true);
@@ -240,6 +315,7 @@ async function init() {
   $("estadoToggle").addEventListener("click", actualizarVencSection);
   $("medioPago").addEventListener("input", () => {
     if (!$("vencSection").hidden) renderVencChips();
+    renderUltimosMovimientos();
   });
   $("categoria").addEventListener("change", updateSubcategorias);
   $("categoria").addEventListener("input", updateSubcategorias);

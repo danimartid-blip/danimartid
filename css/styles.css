@@ -487,6 +487,15 @@ input[type="number"] { font-variant-numeric: tabular-nums; }
   -webkit-tap-highlight-color: transparent;
 }
 
+/* "hasta dónde ya cargué esta tarjeta" — bajo el campo Medio de pago */
+.ultimos-mov {
+  margin-top: 10px;
+  padding: 12px 13px 4px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  animation: revealDown .2s var(--ease);
+}
+
 /* atajos de fecha de vencimiento (según el día en que vence cada tarjeta) */
 .venc-chips { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 9px; }
 .venc-chip {
