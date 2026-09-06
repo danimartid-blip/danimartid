@@ -441,13 +441,17 @@ function renderPagarTarjetas(pendientes) {
     const id = `pg${++pagoUid}`;
     const wrap = document.createElement("div");
     wrap.className = "category-row";
+    // El vencimiento va destacado: dos cuotas del mismo monto solo se distinguen por eso.
+    const venc = parseFechaVenc(g.venc);
+    const vencido = venc && venc < new Date(new Date().toDateString());
     wrap.innerHTML = `
       <div class="category-row-top cat-clickable" data-target="${id}">
         <span class="cat-name">${g.medio}</span>
         <span class="cat-amounts">${fmtCLP(total)}</span>
       </div>
-      <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px;">
-        vence ${g.venc} · ${g.movs.length} movimiento${g.movs.length === 1 ? "" : "s"}
+      <div style="font-size:11.5px;margin-top:4px;display:flex;align-items:center;gap:7px;">
+        <span class="badge ${vencido ? "badge-critical" : "badge-muted"}">vence ${g.venc}</span>
+        <span style="color:var(--text-muted)">${g.movs.length} movimiento${g.movs.length === 1 ? "" : "s"}</span>
       </div>
       <div class="sub-detail" id="${id}" hidden style="margin-top:10px;"></div>`;
 
@@ -469,17 +473,23 @@ function renderPanelPago(panel, grupo, total) {
   const detalle = grupo.movs
     .slice()
     .sort((a, b) => Math.abs(b.monto) - Math.abs(a.monto))
-    .slice(0, 6)
+    .slice(0, 8)
     .map(
-      (m) => `<div class="category-row-top" style="padding:4px 0;font-size:11.5px;">
-        <span style="color:var(--text-muted)">${m.detalle || m.categoria}</span>
+      (m) => `<div class="category-row-top" style="padding:5px 0;font-size:11.5px;">
+        <span style="color:var(--text-secondary)">
+          <strong>${m.detalle || m.categoria}</strong>
+          <span style="color:var(--text-muted)"> · ${m.fecha}</span>
+        </span>
         <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
       </div>`
     )
     .join("");
-  const resto = grupo.movs.length > 6 ? `<div style="font-size:11px;color:var(--text-muted);padding-top:4px;">+ ${grupo.movs.length - 6} más…</div>` : "";
+  const resto = grupo.movs.length > 8 ? `<div style="font-size:11px;color:var(--text-muted);padding-top:4px;">+ ${grupo.movs.length - 8} más…</div>` : "";
 
   panel.innerHTML = `
+    <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:6px;">
+      Estado de cuenta de <strong>${grupo.medio}</strong> con vencimiento <strong>${grupo.venc}</strong>
+    </div>
     ${detalle}${resto}
     <label style="margin-top:12px;">¿Cuánto pagaste?</label>
     <input type="number" inputmode="numeric" class="monto-pagado" value="${Math.round(total)}">
@@ -522,7 +532,8 @@ function renderPanelPago(panel, grupo, total) {
     const dif = Math.round(pagado - total);
     const destino = panel.querySelector(".destino-select").value;
 
-    const msg = `Se marcarán ${grupo.movs.length} movimientos de ${grupo.medio} como Pagado (${fmtCLP(total)})` +
+    const msg = `${grupo.medio} · vencimiento ${grupo.venc}\n\n` +
+      `Se marcarán ${grupo.movs.length} movimientos como Pagado (${fmtCLP(total)})` +
       (Math.abs(dif) >= 1 ? `\ny se registrará ${fmtCLP(Math.abs(dif))} como "${destino}".` : ".") +
       `\n\nRecuerda actualizar después el saldo de la cuenta desde donde pagaste.`;
     if (!confirm(msg)) return;
