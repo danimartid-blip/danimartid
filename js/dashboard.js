@@ -437,18 +437,23 @@ function renderPagarTarjetas(pendientes) {
 
   for (const g of ordenados) {
     const total = -g.movs.reduce((s, m) => s + m.monto, 0);
+    // Un total negativo es al revés de una deuda de tarjeta: es plata que TE deben
+    // (un préstamo que hiciste), no plata que tú debes. Se muestra sin el signo
+    // crudo (que confunde) y con su propio badge, y abre un flujo distinto.
+    const esCobrar = total < 0;
     const id = `pg${++pagoUid}`;
     const wrap = document.createElement("div");
     wrap.className = "category-row";
     // El vencimiento va destacado: dos cuotas del mismo monto solo se distinguen por eso.
     const venc = parseFechaVenc(g.venc);
-    const vencido = venc && venc < new Date(new Date().toDateString());
+    const vencido = !esCobrar && venc && venc < new Date(new Date().toDateString());
     wrap.innerHTML = `
       <div class="category-row-top cat-clickable" data-target="${id}">
         <span class="cat-name">${g.medio}</span>
-        <span class="cat-amounts">${fmtCLP(total)}</span>
+        <span class="cat-amounts">${fmtCLP(Math.abs(total))}</span>
       </div>
-      <div style="font-size:11.5px;margin-top:4px;display:flex;align-items:center;gap:7px;">
+      <div style="font-size:11.5px;margin-top:4px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+        ${esCobrar ? '<span class="badge badge-good">por cobrar</span>' : ""}
         <span class="badge ${vencido ? "badge-critical" : "badge-muted"}">vence ${g.venc}</span>
         <span style="color:var(--text-muted)">${g.movs.length} movimiento${g.movs.length === 1 ? "" : "s"}</span>
       </div>
@@ -459,7 +464,8 @@ function renderPagarTarjetas(pendientes) {
       panel.hidden = !panel.hidden;
       if (!panel.hidden && !panel.dataset.listo) {
         panel.dataset.listo = "1";
-        renderPanelPago(panel, g, total);
+        if (esCobrar) renderPanelCobrar(panel, g, Math.abs(total));
+        else renderPanelPago(panel, g, total);
       }
     });
     cont.appendChild(wrap);
@@ -467,6 +473,143 @@ function renderPagarTarjetas(pendientes) {
 }
 
 let pagoUid = 0;
+
+/** La categoría/subcategoría más repetida del grupo, para prellenar los nuevos
+ * movimientos con lo mismo que ya venías usando para este préstamo/cobro. */
+function categoriaDominante(movs) {
+  const cnt = {};
+  for (const m of movs) {
+    const k = `${m.categoria}|||${m.subcategoria || ""}`;
+    cnt[k] = (cnt[k] || 0) + 1;
+  }
+  const [top] = Object.entries(cnt).sort((a, b) => b[1] - a[1]);
+  const [categoria, subcategoria] = top[0].split("|||");
+  return { categoria, subcategoria };
+}
+
+/** Un grupo "por cobrar": no le debes a un banco, alguien te debe a ti (un
+ * préstamo que hiciste). No aplica "¿cuánto pagaste?" — aplica registrar lo que
+ * te van abonando, o aceptar que una parte no se va a cobrar. Ambas acciones
+ * quedan como una fila que descuenta del pendiente (igual que ya hacían tus
+ * propios "Recupero dinero" en el histórico) más el movimiento real que
+ * corresponde: un ingreso si te pagaron, un gasto si lo das por perdido. */
+function renderPanelCobrar(panel, grupo, totalCobrar) {
+  const { categoria, subcategoria } = categoriaDominante(grupo.movs);
+  const cuentasOpts = cuentas.map((c) => `<option value="${c.nombre}"></option>`).join("");
+  const detalle = grupo.movs
+    .slice()
+    .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))
+    .map(
+      (m) => `<div class="category-row-top" style="padding:5px 0;font-size:11.5px;">
+        <span style="color:var(--text-secondary)">
+          <strong>${m.detalle || m.categoria}</strong>
+          <span style="color:var(--text-muted)"> · ${m.fecha}</span>
+        </span>
+        <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
+      </div>`
+    )
+    .join("");
+
+  panel.innerHTML = `
+    <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:6px;">
+      <strong>${grupo.medio}</strong> te debe — historial de este préstamo/cobro:
+    </div>
+    ${detalle}
+
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn-secondary tab-abono active" style="flex:1;">Registrar abono</button>
+      <button class="btn-secondary tab-castigo" style="flex:1;">Castigar incobrable</button>
+    </div>
+
+    <div class="bloque-abono" style="margin-top:12px;">
+      <label>¿Cuánto te abonaron?</label>
+      <input type="number" inputmode="numeric" class="monto-abono" placeholder="0" value="${Math.round(totalCobrar)}">
+      <label>¿En qué cuenta te llegó?</label>
+      <input type="text" class="cuenta-abono" list="cuentasAbonoList" placeholder="Ej: Efectivo, Mercado Pago" autocomplete="off">
+      <datalist id="cuentasAbonoList">${cuentasOpts}</datalist>
+      <button class="btn-primary btn-registrar-abono" style="margin-top:14px;">Registrar abono</button>
+    </div>
+
+    <div class="bloque-castigo" hidden style="margin-top:12px;">
+      <p style="font-size:11.5px;color:var(--text-muted);line-height:1.5;margin:0 0 8px;">
+        Da por perdida esta parte de la deuda. Queda registrada como gasto real (así tu liquidez refleja
+        la pérdida), y sale del pendiente por cobrar. No mueve el saldo de ninguna cuenta.
+      </p>
+      <label>¿Cuánto vas a castigar?</label>
+      <input type="number" inputmode="numeric" class="monto-castigo" placeholder="0" value="${Math.round(totalCobrar)}">
+      <button class="btn-primary btn-registrar-castigo" style="margin-top:14px;background:var(--critical);">Castigar como incobrable</button>
+    </div>
+  `;
+
+  const tabAbono = panel.querySelector(".tab-abono");
+  const tabCastigo = panel.querySelector(".tab-castigo");
+  const bloqueAbono = panel.querySelector(".bloque-abono");
+  const bloqueCastigo = panel.querySelector(".bloque-castigo");
+  tabAbono.addEventListener("click", (e) => {
+    e.stopPropagation();
+    tabAbono.classList.add("active"); tabCastigo.classList.remove("active");
+    bloqueAbono.hidden = false; bloqueCastigo.hidden = true;
+  });
+  tabCastigo.addEventListener("click", (e) => {
+    e.stopPropagation();
+    tabCastigo.classList.add("active"); tabAbono.classList.remove("active");
+    bloqueCastigo.hidden = false; bloqueAbono.hidden = true;
+  });
+
+  /** Dos movimientos: uno que descuenta del pendiente (mismo mecanismo que ya
+   * usa tu histórico), y el real (ingreso o gasto) que corresponde. */
+  const registrarCobro = async (btn, { monto, tipoReal, detalleReal, medioReal }) => {
+    if (!monto || monto <= 0) return showToast("Monto inválido", true);
+    const textoOriginal = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Registrando…";
+    const hoyISO = new Date().toISOString().slice(0, 10);
+    const [yyyy, mm] = hoyISO.split("-");
+    try {
+      // 1) descuenta del pendiente por cobrar (queda dentro del mismo grupo)
+      await window.SheetsApi.appendRow(
+        "Movimientos!A:N",
+        [hoyISO, yyyy, String(Number(mm)), "Gasto", categoria, subcategoria, grupo.medio, "Por pagar",
+          -monto, detalleReal, grupo.venc, "", "", ""],
+        "RAW"
+      );
+      // 2) el movimiento real: ingreso si te pagaron, gasto si lo diste por perdido
+      await window.SheetsApi.appendRow(
+        "Movimientos!A:N",
+        [hoyISO, yyyy, String(Number(mm)), tipoReal, categoria, subcategoria, medioReal, "Pagado",
+          tipoReal === "Gasto" ? -monto : monto, detalleReal, "", "", "", ""],
+        "RAW"
+      );
+      await loadData();
+      renderStats($("monthSelect").value);
+      renderPatrimonio();
+    } catch (err) {
+      console.error(err);
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
+  };
+
+  panel.querySelector(".btn-registrar-abono").addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const monto = Number(panel.querySelector(".monto-abono").value);
+    const cuenta = panel.querySelector(".cuenta-abono").value.trim();
+    if (!cuenta) return showToast("Falta la cuenta donde te llegó", true);
+    if (!confirm(`Se registrará un abono de ${fmtCLP(monto)} recibido en ${cuenta}.\n\nRecuerda actualizar después el saldo real de esa cuenta en la pestaña Cuentas.\n\n¿Continuar?`)) return;
+    await registrarCobro(e.currentTarget, {
+      monto, tipoReal: "Ingreso", medioReal: cuenta, detalleReal: `Abono recibido de ${grupo.medio}`,
+    });
+  });
+
+  panel.querySelector(".btn-registrar-castigo").addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const monto = Number(panel.querySelector(".monto-castigo").value);
+    if (!confirm(`Se castigará ${fmtCLP(monto)} como incobrable de ${grupo.medio} — quedará registrado como gasto real. ¿Continuar?`)) return;
+    await registrarCobro(e.currentTarget, {
+      monto, tipoReal: "Gasto", medioReal: grupo.medio, detalleReal: `Castigo incobrable ${grupo.medio}`,
+    });
+  });
+}
 
 function renderPanelPago(panel, grupo, total) {
   const detalle = grupo.movs

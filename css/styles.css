@@ -480,6 +480,7 @@ input[type="number"] { font-variant-numeric: tabular-nums; }
   -webkit-tap-highlight-color: transparent;
 }
 .btn-secondary:active { background: var(--surface-2); transform: scale(0.97); }
+.btn-secondary.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
 .btn-link {
   background: none; border: none; color: var(--accent);
