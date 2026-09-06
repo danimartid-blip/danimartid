@@ -78,9 +78,11 @@ function totalBudgetForTipo(tipo, mes) {
 }
 
 function parseMovimientos(rows) {
+  // map ANTES de filter: hay que conservar el índice real para saber la fila
+  // de la planilla que toca actualizar al marcar un pago.
   return rows
-    .filter((r) => r[0]) // has fecha
-    .map((r) => ({
+    .map((r, i) => ({
+      fila: i + 2,
       fecha: r[0],
       año: String(r[1] || "").trim(),
       mes: String(r[2] || "").trim(),
@@ -92,7 +94,8 @@ function parseMovimientos(rows) {
       monto: Number(r[8]) || 0,
       detalle: r[9] || "",
       fechaVencimiento: r[10] || "",
-    }));
+    }))
+    .filter((m) => m.fecha);
 }
 
 /** Parses DD/MM/YYYY or DD-MM-YYYY into a Date (or null). */
@@ -402,6 +405,164 @@ function renderPorPagarDetail(pendientes) {
   if (Object.keys(byPeriod).length === 0) {
     periodosEl.innerHTML = '<div class="skeleton no-spinner">Sin vencimientos con fecha</div>';
   }
+
+  renderPagarTarjetas(pendientes);
+}
+
+/** Pagar un estado de cuenta: agrupa lo pendiente por tarjeta + fecha de
+ * vencimiento (que es justo lo que llega en una factura), marca esos movimientos
+ * como Pagado y registra la diferencia (comisiones, gastos administrativos) que
+ * el banco agrega al facturar y que nunca calza con lo registrado. */
+function renderPagarTarjetas(pendientes) {
+  const cont = $("pagarTarjetas");
+  cont.innerHTML = "";
+
+  const grupos = {};
+  for (const m of pendientes) {
+    const medio = m.medioPago || "(sin medio de pago)";
+    const venc = m.fechaVencimiento || "(sin fecha)";
+    const k = `${medio}|||${venc}`;
+    (grupos[k] ||= { medio, venc, movs: [] }).movs.push(m);
+  }
+
+  const ordenados = Object.values(grupos).sort((a, b) => {
+    const da = parseFechaVenc(a.venc), db = parseFechaVenc(b.venc);
+    if (da && db) return da - db;
+    return 0;
+  });
+
+  if (ordenados.length === 0) {
+    cont.innerHTML = '<div class="skeleton no-spinner">Nada pendiente por pagar</div>';
+    return;
+  }
+
+  for (const g of ordenados) {
+    const total = -g.movs.reduce((s, m) => s + m.monto, 0);
+    const id = `pg${++pagoUid}`;
+    const wrap = document.createElement("div");
+    wrap.className = "category-row";
+    wrap.innerHTML = `
+      <div class="category-row-top cat-clickable" data-target="${id}">
+        <span class="cat-name">${g.medio}</span>
+        <span class="cat-amounts">${fmtCLP(total)}</span>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px;">
+        vence ${g.venc} · ${g.movs.length} movimiento${g.movs.length === 1 ? "" : "s"}
+      </div>
+      <div class="sub-detail" id="${id}" hidden style="margin-top:10px;"></div>`;
+
+    const panel = wrap.querySelector(`#${id}`);
+    wrap.querySelector(".cat-clickable").addEventListener("click", () => {
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden && !panel.dataset.listo) {
+        panel.dataset.listo = "1";
+        renderPanelPago(panel, g, total);
+      }
+    });
+    cont.appendChild(wrap);
+  }
+}
+
+let pagoUid = 0;
+
+function renderPanelPago(panel, grupo, total) {
+  const detalle = grupo.movs
+    .slice()
+    .sort((a, b) => Math.abs(b.monto) - Math.abs(a.monto))
+    .slice(0, 6)
+    .map(
+      (m) => `<div class="category-row-top" style="padding:4px 0;font-size:11.5px;">
+        <span style="color:var(--text-muted)">${m.detalle || m.categoria}</span>
+        <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
+      </div>`
+    )
+    .join("");
+  const resto = grupo.movs.length > 6 ? `<div style="font-size:11px;color:var(--text-muted);padding-top:4px;">+ ${grupo.movs.length - 6} más…</div>` : "";
+
+  panel.innerHTML = `
+    ${detalle}${resto}
+    <label style="margin-top:12px;">¿Cuánto pagaste?</label>
+    <input type="number" inputmode="numeric" class="monto-pagado" value="${Math.round(total)}">
+    <div class="dif-pago" style="font-size:12px;margin:8px 0;color:var(--text-muted);"></div>
+    <div class="dif-destino" hidden>
+      <label style="margin-top:4px;">La diferencia va como</label>
+      <select class="destino-select">
+        <option value="Costo tarjetas">Costo tarjetas (comisión / gasto administrativo)</option>
+        <option value="Intereses">Intereses</option>
+        <option value="Ajuste conciliación">Ajuste conciliación</option>
+      </select>
+    </div>
+    <button class="btn-primary registrar-pago" style="margin-top:14px;">Registrar pago</button>`;
+
+  const input = panel.querySelector(".monto-pagado");
+  const difEl = panel.querySelector(".dif-pago");
+  const destinoBox = panel.querySelector(".dif-destino");
+
+  const refrescarDif = () => {
+    const pagado = Number(input.value) || 0;
+    const dif = pagado - total;
+    destinoBox.hidden = Math.abs(dif) < 1;
+    if (Math.abs(dif) < 1) {
+      difEl.innerHTML = `<span class="badge badge-good">calza exacto</span>`;
+    } else if (dif > 0) {
+      difEl.innerHTML = `Pagaste <strong>${fmtCLP(dif)}</strong> de más — se registrará como gasto extra.`;
+      difEl.style.color = "var(--serious)";
+    } else {
+      difEl.innerHTML = `Pagaste <strong>${fmtCLP(-dif)}</strong> de menos — se registrará como abono a favor.`;
+      difEl.style.color = "var(--text-muted)";
+    }
+  };
+  input.addEventListener("input", refrescarDif);
+  refrescarDif();
+
+  panel.querySelector(".registrar-pago").addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const btn = e.currentTarget;
+    const pagado = Number(input.value) || 0;
+    const dif = Math.round(pagado - total);
+    const destino = panel.querySelector(".destino-select").value;
+
+    const msg = `Se marcarán ${grupo.movs.length} movimientos de ${grupo.medio} como Pagado (${fmtCLP(total)})` +
+      (Math.abs(dif) >= 1 ? `\ny se registrará ${fmtCLP(Math.abs(dif))} como "${destino}".` : ".") +
+      `\n\nRecuerda actualizar después el saldo de la cuenta desde donde pagaste.`;
+    if (!confirm(msg)) return;
+
+    btn.disabled = true;
+    btn.textContent = "Registrando…";
+    try {
+      // 1) marcar los pendientes como pagados (columna H)
+      await window.SheetsApi.batchUpdateValues(
+        grupo.movs.map((m) => ({ range: `Movimientos!H${m.fila}`, values: [["Pagado"]] })),
+        "RAW"
+      );
+
+      // 2) la comisión / diferencia como movimiento propio, ya pagado
+      if (Math.abs(dif) >= 1) {
+        const hoyISO = new Date().toISOString().slice(0, 10);
+        const [yyyy, mm] = hoyISO.split("-");
+        await window.SheetsApi.appendRow(
+          "Movimientos!A:N",
+          [
+            hoyISO, yyyy, String(Number(mm)),
+            dif > 0 ? "Gasto" : "Ingreso",
+            destino, grupo.medio, grupo.medio, "Pagado",
+            dif > 0 ? -Math.abs(dif) : Math.abs(dif),
+            `Diferencia al pagar ${grupo.medio}`,
+            "", "", "", "",
+          ],
+          "RAW"
+        );
+      }
+
+      await loadData();
+      renderStats($("monthSelect").value);
+      renderPatrimonio();
+    } catch (err) {
+      console.error(err);
+      btn.disabled = false;
+      btn.textContent = "Registrar pago";
+    }
+  });
 }
 
 /** Mes calendario actual, "YYYY-MM". */

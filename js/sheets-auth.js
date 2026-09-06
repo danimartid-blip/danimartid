@@ -122,6 +122,15 @@ async function appendRow(range, row, mode = "USER_ENTERED") {
   );
 }
 
+/** Overwrites many ranges in one request. `data` = [{range, values}, ...].
+ * Necesario para marcar decenas de movimientos como pagados de una sola vez. */
+async function batchUpdateValues(data, mode = "RAW") {
+  return sheetsFetch("/values:batchUpdate", {
+    method: "POST",
+    body: JSON.stringify({ valueInputOption: mode, data }),
+  });
+}
+
 /** Overwrites a specific range (e.g. a single row) in place. */
 async function updateRange(range, values, mode = "USER_ENTERED") {
   return sheetsFetch(
@@ -143,4 +152,4 @@ function requireAuthOrRedirect() {
 }
 
 window.SheetsAuth = { getAccessToken, isLoggedIn, logout, requireAuthOrRedirect };
-window.SheetsApi = { readRange, appendRow, updateRange };
+window.SheetsApi = { readRange, appendRow, updateRange, batchUpdateValues };
