@@ -137,17 +137,54 @@ function isoAVencimiento(iso) {
   return `${Number(d)}-${Number(m)}-${y}`;
 }
 
-async function handleSubmit(e) {
-  e.preventDefault();
-
-  // Un "por pagar" sin vencimiento queda fuera del desglose por mes: no se permite.
+/** Ningún movimiento debe quedar incompleto: un campo vacío rompe después los
+ * agrupados (por medio de pago, por categoría, por vencimiento). Valida con
+ * trim, porque el `required` del navegador acepta puros espacios. */
+function validarFormulario() {
+  const obligatorios = [
+    ["monto", "el monto"],
+    ["fecha", "la fecha"],
+    ["categoria", "la categoría"],
+    ["subcategoria", "la subcategoría"],
+    ["medioPago", "el medio de pago"],
+    ["detalle", "el detalle"],
+  ];
+  for (const [id, nombre] of obligatorios) {
+    if (!String($(id).value).trim()) {
+      showToast(`Falta ${nombre}`, true);
+      $(id).focus();
+      return false;
+    }
+  }
+  if (Number($("monto").value) === 0) {
+    showToast("El monto no puede ser cero", true);
+    $("monto").focus();
+    return false;
+  }
+  // Un "por pagar" sin vencimiento queda fuera del desglose por mes.
   if (state.estado === "Por pagar" && !$("fechaVencimiento").value) {
     showToast("Un 'por pagar' necesita fecha de vencimiento", true);
     $("vencSection").hidden = false;
     renderVencChips();
     $("fechaVencimiento").focus();
-    return;
+    return false;
   }
+  // Si abrió la sección de cuotas, que la complete.
+  if (!$("cuotaSection").hidden) {
+    for (const [id, nombre] of [["cuotasTotales", "el total de cuotas"], ["cuotaDevengada", "la cuota actual"]]) {
+      if (!String($(id).value).trim()) {
+        showToast(`Falta ${nombre}`, true);
+        $(id).focus();
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+async function handleSubmit(e) {
+  e.preventDefault();
+  if (!validarFormulario()) return;
 
   const submitBtn = $("submitBtn");
   submitBtn.disabled = true;

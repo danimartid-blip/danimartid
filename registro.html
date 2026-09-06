@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202609052244">
+<link rel="stylesheet" href="css/styles.css?v=202609052309">
 </head>
 <body>
 
@@ -38,11 +38,11 @@
     <datalist id="categoriaList"></datalist>
 
     <label for="subcategoria">Subcategoría</label>
-    <input type="text" id="subcategoria" list="subcategoriaList" autocomplete="off">
+    <input type="text" id="subcategoria" list="subcategoriaList" autocomplete="off" required>
     <datalist id="subcategoriaList"></datalist>
 
     <label for="medioPago">Medio de pago</label>
-    <input type="text" id="medioPago" list="medioPagoList" autocomplete="off">
+    <input type="text" id="medioPago" list="medioPagoList" autocomplete="off" required>
     <datalist id="medioPagoList"></datalist>
 
     <div>
@@ -60,7 +60,7 @@
     </div>
 
     <label for="detalle">Detalle</label>
-    <input type="text" id="detalle" placeholder="Ej: Supermercado Lider" autocomplete="off">
+    <input type="text" id="detalle" placeholder="Ej: Supermercado Lider" autocomplete="off" required>
 
     <button type="button" class="btn-link" id="toggleCuota">+ ¿Es una cuota?</button>
     <div class="advanced-section" id="cuotaSection" hidden>
@@ -101,9 +101,9 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202609052244"></script>
+<script src="js/config.js?v=202609052309"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202609052244"></script>
-<script src="js/registro.js?v=202609052244"></script>
+<script src="js/sheets-auth.js?v=202609052309"></script>
+<script src="js/registro.js?v=202609052309"></script>
 </body>
 </html>
