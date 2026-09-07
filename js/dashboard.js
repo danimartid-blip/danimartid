@@ -573,10 +573,14 @@ function renderPanelCobrar(panel, grupo, totalCobrar) {
           -monto, detalleReal, grupo.venc, "", "", ""],
         "RAW"
       );
-      // 2) el movimiento real: ingreso si te pagaron, gasto si lo diste por perdido
+      // 2) el movimiento real: ingreso si te pagaron, gasto si lo diste por perdido.
+      // Un castigo usa la subcategoría "Incobrable" — es una marca, no solo texto:
+      // la Conciliación la excluye de "lo pagado", porque no salió plata de ningún
+      // banco real (solo cuenta como pérdida en tu liquidez/presupuesto).
+      const subReal = tipoReal === "Gasto" ? "Incobrable" : subcategoria;
       await window.SheetsApi.appendRow(
         "Movimientos!A:N",
-        [hoyISO, yyyy, String(Number(mm)), tipoReal, categoria, subcategoria, medioReal, "Pagado",
+        [hoyISO, yyyy, String(Number(mm)), tipoReal, categoria, subReal, medioReal, "Pagado",
           tipoReal === "Gasto" ? -monto : monto, detalleReal, "", "", "", ""],
         "RAW"
       );
@@ -736,7 +740,12 @@ function renderConciliacion(selectedKey) {
   // se hizo la compra: un "por pagar" entra al acumulado justo cuando se paga,
   // que es cuando la plata sale del banco. Conciliar por mes fallaba en cada
   // pago de tarjeta, porque se paga en un mes lo comprado en otro.
-  const pagados = movimientos.filter((m) => (m.estado || "").trim() === "Pagado");
+  // Excluye los castigos de incobrables: quedan Pagado (afectan tu liquidez y el
+  // presupuesto como pérdida real), pero no salió plata de ninguna cuenta, así
+  // que no deben entrar a la cuadratura contra el saldo bancario.
+  const pagados = movimientos.filter(
+    (m) => (m.estado || "").trim() === "Pagado" && m.subcategoria !== "Incobrable"
+  );
   const esperado = pagados.reduce((s, m) => s + m.monto, 0);
   const ingresos = pagados.filter((m) => m.tipo === "Ingreso").reduce((s, m) => s + Math.abs(m.monto), 0);
   const gastos = pagados.filter((m) => m.tipo === "Gasto").reduce((s, m) => s + Math.abs(m.monto), 0);
