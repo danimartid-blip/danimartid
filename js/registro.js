@@ -156,6 +156,14 @@ function actualizarEstadoPorMedio() {
   actualizarVencSection();
 }
 
+/** Puro rótulo: un Gasto pendiente es "Por pagar", un Ingreso pendiente es
+ * "Por cobrar" — misma lógica, distinta palabra según de qué lado estás. El
+ * valor guardado en la planilla sigue siendo siempre "Por pagar" (así no se
+ * rompe ningún filtro existente); esto solo cambia lo que el botón dice. */
+function actualizarLabelEstado() {
+  $("btnPorPagar").textContent = state.tipo === "Ingreso" ? "Por cobrar" : "Por pagar";
+}
+
 function actualizarVencSection() {
   const esPorPagar = state.estado === "Por pagar";
   $("vencSection").hidden = !esPorPagar;
@@ -243,6 +251,7 @@ function resetFormForNextEntry() {
   $("tipoToggle").querySelectorAll("button").forEach((b) => b.classList.remove("active"));
   tipoBtn.classList.add("active");
   state.tipo = "Gasto";
+  actualizarLabelEstado();
 
   const estadoBtn = $("estadoToggle").querySelector('[data-estado="Pagado"]');
   $("estadoToggle").querySelectorAll("button").forEach((b) => b.classList.remove("active"));
@@ -364,6 +373,7 @@ async function init() {
 
   $("fecha").value = todayISO();
   wireToggle("tipoToggle", "type", "tipo");
+  $("tipoToggle").addEventListener("click", actualizarLabelEstado);
   wireToggle("estadoToggle", "estado", "estado");
   $("estadoToggle").addEventListener("click", () => {
     estadoTocadoManualmente = true; // el usuario decidió — se deja de auto-elegir por el medio
@@ -383,6 +393,7 @@ async function init() {
   });
   $("form").addEventListener("submit", handleSubmit);
   $("form").hidden = false;
+  actualizarLabelEstado();
   $("medioPago").focus(); // primer campo del flujo: pinchas la tarjeta y ves de una el recordatorio
 }
 
