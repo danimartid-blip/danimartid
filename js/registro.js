@@ -326,6 +326,7 @@ async function init() {
   });
   $("form").addEventListener("submit", handleSubmit);
   $("form").hidden = false;
+  $("medioPago").focus(); // primer campo del flujo: pinchas la tarjeta y ves de una el recordatorio
 }
 
 init();
