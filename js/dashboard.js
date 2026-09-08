@@ -23,13 +23,28 @@ function monthsBeforeExclusive(mes, n) {
   return out;
 }
 
+/** Gasto (o ingreso) real de una categoría en un mes. Para Gasto, NETO de
+ * reembolsos: si hay un Ingreso con la MISMA categoría (y misma subcategoría,
+ * si se especifica) ese mes, se descuenta — es tu propia convención para marcar
+ * "esto me lo van a devolver" (ej. el café de Starbucks que te reembolsan
+ * queda anotado también como Trabajo/Starbuck). subcategoria === undefined =>
+ * toda la categoría junta. Un Ingreso nunca se neta contra gastos — solo aplica
+ * cuando se pide el Gasto. */
+function montoRealNeto(tipo, categoria, mes, subcategoria) {
+  let total = 0;
+  let reembolso = 0;
+  for (const m of movimientos) {
+    if (m.categoria !== categoria || monthKey(m) !== mes) continue;
+    if (subcategoria !== undefined && (m.subcategoria || "") !== subcategoria) continue;
+    if (m.tipo === tipo) total += Math.abs(m.monto);
+    else if (tipo === "Gasto" && m.tipo === "Ingreso") reembolso += m.monto;
+  }
+  return total - reembolso;
+}
+
 function avg3Real(tipo, categoria, subcategoria, mes) {
   const months = monthsBeforeExclusive(mes, 3);
-  const totals = months.map((mk) =>
-    movimientos
-      .filter((m) => m.tipo === tipo && m.categoria === categoria && (m.subcategoria || "") === subcategoria && monthKey(m) === mk)
-      .reduce((s, m) => s + Math.abs(m.monto), 0)
-  );
+  const totals = months.map((mk) => montoRealNeto(tipo, categoria, mk, subcategoria));
   return totals.reduce((a, b) => a + b, 0) / 3;
 }
 
@@ -165,13 +180,17 @@ function populateMonthSelect() {
   return keys[0];
 }
 
-/** Monthly totals (Gasto only) for movimientos matching predicate, keyed by monthKey. */
-function monthlyTotals(predicate) {
+/** Gasto neto por mes de una categoría (y opcionalmente subcategoría, con el
+ * mismo sentinel "(sin subcategoría)" que usa el resto del dashboard), para las
+ * mini-barras de tendencia. Mismo criterio de reembolso que montoRealNeto. */
+function monthlyTotals(categoria, subSentinel) {
   const out = {};
   for (const m of movimientos) {
-    if (m.tipo !== "Gasto" || !predicate(m)) continue;
+    if (m.categoria !== categoria) continue;
+    if (subSentinel !== undefined && (m.subcategoria || "(sin subcategoría)") !== subSentinel) continue;
     const key = monthKey(m);
-    out[key] = (out[key] || 0) + Math.abs(m.monto);
+    if (m.tipo === "Gasto") out[key] = (out[key] || 0) + Math.abs(m.monto);
+    else if (m.tipo === "Ingreso") out[key] = (out[key] || 0) - m.monto;
   }
   return out;
 }
@@ -219,12 +238,14 @@ function wireSubcategoryToggles(scope) {
         const { cat, sub, key } = el.dataset;
         const sparkline = buildSparklineHTML(
           monthsBackFrom(key, 6),
-          monthlyTotals((m) => m.categoria === cat && (m.subcategoria || "(sin subcategoría)") === sub)
+          monthlyTotals(cat, sub)
         );
+        // Incluye los reembolsos (Ingreso de la misma categoría/subcategoría) junto
+        // a los gastos, para que se vea CONTRA QUÉ se está netando el total de arriba.
         const items = movimientos
           .filter(
             (m) =>
-              m.tipo === "Gasto" &&
+              (m.tipo === "Gasto" || m.tipo === "Ingreso") &&
               m.categoria === cat &&
               (m.subcategoria || "(sin subcategoría)") === sub &&
               monthKey(m) === key
@@ -232,8 +253,11 @@ function wireSubcategoryToggles(scope) {
           .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))
           .map(
             (m) => `<div class="category-row-top" style="padding:5px 0;font-size:12px;">
-              <span style="color:var(--text-muted)">${formatFechaCorta(m.fecha)} · ${m.detalle || "—"}</span>
-              <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
+              <span style="color:var(--text-muted)">
+                ${formatFechaCorta(m.fecha)} · ${m.detalle || "—"}
+                ${m.tipo === "Ingreso" ? '<span class="badge badge-good" style="margin-left:4px;">reembolso</span>' : ""}
+              </span>
+              <span class="cat-amounts ${m.tipo === "Ingreso" ? "income" : ""}">${m.tipo === "Ingreso" ? "−" : ""}${fmtCLP(Math.abs(m.monto))}</span>
             </div>`
           )
           .join("");
@@ -248,12 +272,12 @@ function wireSubcategoryToggles(scope) {
 function renderStats(selectedKey) {
   const inMonth = movimientos.filter((m) => monthKey(m) === selectedKey);
 
-  // Categorías (gasto) vs presupuesto — todas, sin recortar.
+  // Categorías (gasto neto de reembolsos) vs presupuesto — todas, sin recortar.
+  // Solo se listan categorías con al menos un Gasto este mes (un reembolso solo,
+  // sin gasto que reembolsar, no pinta acá — igual entra al Balance como ingreso).
+  const categoriasConGasto = new Set(inMonth.filter((m) => m.tipo === "Gasto").map((m) => m.categoria));
   const byCat = {};
-  for (const m of inMonth) {
-    if (m.tipo !== "Gasto") continue;
-    byCat[m.categoria] = (byCat[m.categoria] || 0) + Math.abs(m.monto);
-  }
+  for (const cat of categoriasConGasto) byCat[cat] = montoRealNeto("Gasto", cat, selectedKey);
   const sorted = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
   const list = $("categoryList");
   list.innerHTML = "";
@@ -268,15 +292,16 @@ function renderStats(selectedKey) {
 
     const sparkline = buildSparklineHTML(
       monthsBackFrom(selectedKey, 6),
-      monthlyTotals((m) => m.categoria === cat)
+      monthlyTotals(cat)
     );
 
-    // Subcategorías de esta categoría, en el mes seleccionado.
+    // Subcategorías de esta categoría, en el mes seleccionado — netas de reembolso.
+    const subsConGasto = new Set(
+      inMonth.filter((m) => m.tipo === "Gasto" && m.categoria === cat).map((m) => m.subcategoria || "(sin subcategoría)")
+    );
     const bySub = {};
-    for (const m of inMonth) {
-      if (m.tipo !== "Gasto" || m.categoria !== cat) continue;
-      const sub = m.subcategoria || "(sin subcategoría)";
-      bySub[sub] = (bySub[sub] || 0) + Math.abs(m.monto);
+    for (const sub of subsConGasto) {
+      bySub[sub] = montoRealNeto("Gasto", cat, selectedKey, sub === "(sin subcategoría)" ? "" : sub);
     }
     const subRows = Object.entries(bySub)
       .sort((a, b) => b[1] - a[1])
@@ -424,52 +449,63 @@ function renderPagarTarjetas(pendientes) {
     (grupos[k] ||= { medio, venc, movs: [] }).movs.push(m);
   }
 
-  const ordenados = Object.values(grupos).sort((a, b) => {
+  const porVenc = (a, b) => {
     const da = parseFechaVenc(a.venc), db = parseFechaVenc(b.venc);
-    if (da && db) return da - db;
-    return 0;
-  });
+    return da && db ? da - db : 0;
+  };
+  // Un total negativo es al revés de una deuda de tarjeta: es plata que TE deben
+  // (un préstamo que hiciste), no plata que tú debes.
+  const aPagar = Object.values(grupos).filter((g) => -g.movs.reduce((s, m) => s + m.monto, 0) >= 0).sort(porVenc);
+  const aCobrar = Object.values(grupos).filter((g) => -g.movs.reduce((s, m) => s + m.monto, 0) < 0).sort(porVenc);
 
-  if (ordenados.length === 0) {
-    cont.innerHTML = '<div class="skeleton no-spinner">Nada pendiente por pagar</div>';
+  if (aPagar.length === 0 && aCobrar.length === 0) {
+    cont.innerHTML = '<div class="skeleton no-spinner">Nada pendiente</div>';
     return;
   }
 
-  for (const g of ordenados) {
-    const total = -g.movs.reduce((s, m) => s + m.monto, 0);
-    // Un total negativo es al revés de una deuda de tarjeta: es plata que TE deben
-    // (un préstamo que hiciste), no plata que tú debes. Se muestra sin el signo
-    // crudo (que confunde) y con su propio badge, y abre un flujo distinto.
-    const esCobrar = total < 0;
-    const id = `pg${++pagoUid}`;
-    const wrap = document.createElement("div");
-    wrap.className = "category-row";
-    // El vencimiento va destacado: dos cuotas del mismo monto solo se distinguen por eso.
-    const venc = parseFechaVenc(g.venc);
-    const vencido = !esCobrar && venc && venc < new Date(new Date().toDateString());
-    wrap.innerHTML = `
-      <div class="category-row-top cat-clickable" data-target="${id}">
-        <span class="cat-name">${g.medio}</span>
-        <span class="cat-amounts">${fmtCLP(Math.abs(total))}</span>
-      </div>
-      <div style="font-size:11.5px;margin-top:4px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
-        ${esCobrar ? '<span class="badge badge-good">por cobrar</span>' : ""}
-        <span class="badge ${vencido ? "badge-critical" : "badge-muted"}">vence ${g.venc}</span>
-        <span style="color:var(--text-muted)">${g.movs.length} movimiento${g.movs.length === 1 ? "" : "s"}</span>
-      </div>
-      <div class="sub-detail" id="${id}" hidden style="margin-top:10px;"></div>`;
+  const seccion = (titulo, grupos_, esCobrar) => {
+    if (grupos_.length === 0) return "";
+    const filas = grupos_.map((g) => filaGrupo(g, esCobrar)).join("");
+    return `<div class="card-title" style="margin:14px 0 6px;">${titulo}</div>${filas}`;
+  };
+  cont.innerHTML = seccion("Por cobrar", aCobrar, true) + seccion("Por pagar", aPagar, false);
 
-    const panel = wrap.querySelector(`#${id}`);
+  // Los data-target quedaron en el HTML recién insertado — engancha los clicks ahora.
+  for (const g of [...aCobrar, ...aPagar]) {
+    const id = g._id;
+    const wrap = cont.querySelector(`[data-wrap="${id}"]`);
+    const panel = cont.querySelector(`#${id}`);
     wrap.querySelector(".cat-clickable").addEventListener("click", () => {
       panel.hidden = !panel.hidden;
       if (!panel.hidden && !panel.dataset.listo) {
         panel.dataset.listo = "1";
-        if (esCobrar) renderPanelCobrar(panel, g, Math.abs(total));
+        const total = -g.movs.reduce((s, m) => s + m.monto, 0);
+        if (total < 0) renderPanelCobrar(panel, g, Math.abs(total));
         else renderPanelPago(panel, g, total);
       }
     });
-    cont.appendChild(wrap);
   }
+}
+
+function filaGrupo(g, esCobrar) {
+  const total = Math.abs(-g.movs.reduce((s, m) => s + m.monto, 0));
+  const id = `pg${++pagoUid}`;
+  g._id = id;
+  // El vencimiento va destacado: dos cuotas del mismo monto solo se distinguen por eso.
+  const venc = parseFechaVenc(g.venc);
+  const vencido = !esCobrar && venc && venc < new Date(new Date().toDateString());
+  return `
+    <div class="category-row" data-wrap="${id}">
+      <div class="category-row-top cat-clickable" data-target="${id}">
+        <span class="cat-name">${g.medio}</span>
+        <span class="cat-amounts">${fmtCLP(total)}</span>
+      </div>
+      <div style="font-size:11.5px;margin-top:4px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+        <span class="badge ${vencido ? "badge-critical" : "badge-muted"}">vence ${g.venc}</span>
+        <span style="color:var(--text-muted)">${g.movs.length} movimiento${g.movs.length === 1 ? "" : "s"}</span>
+      </div>
+      <div class="sub-detail" id="${id}" hidden style="margin-top:10px;"></div>
+    </div>`;
 }
 
 let pagoUid = 0;

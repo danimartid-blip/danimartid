@@ -50,12 +50,20 @@ function formatFechaCorta(fecha) {
   return s;
 }
 
+/** Gasto (o ingreso) real de una categoría/subcategoría en un mes. Para Gasto,
+ * NETO de reembolsos: un Ingreso con la MISMA categoría+subcategoría ese mes se
+ * descuenta — es la convención que ya usas para marcar "esto me lo devuelven"
+ * (ej. Trabajo/Starbuck para un café que te reembolsan). Un Ingreso nunca se
+ * neta contra gastos — solo aplica cuando se pide el Gasto. */
 function realMonthlyTotal(tipo, categoria, subcategoria, monthKey) {
-  return movimientos
-    .filter(
-      (m) => m.tipo === tipo && m.categoria === categoria && (m.subcategoria || "") === subcategoria && monthKeyOf(m) === monthKey
-    )
-    .reduce((s, m) => s + Math.abs(m.monto), 0);
+  let total = 0;
+  let reembolso = 0;
+  for (const m of movimientos) {
+    if (m.categoria !== categoria || (m.subcategoria || "") !== subcategoria || monthKeyOf(m) !== monthKey) continue;
+    if (m.tipo === tipo) total += Math.abs(m.monto);
+    else if (tipo === "Gasto" && m.tipo === "Ingreso") reembolso += m.monto;
+  }
+  return total - reembolso;
 }
 
 function findExplicit(mes, tipo, categoria, subcategoria) {
@@ -243,15 +251,21 @@ function wireSubcategoriaToggles(scope, tipo, categoria, mes, historyMonths) {
 }
 
 function renderSubcategoriaDetail(detail, tipo, categoria, sub, mes, si) {
+  // Para Gasto, se incluyen también los reembolsos (Ingreso de la misma
+  // categoría/subcategoría) — es lo que se está netando en el monto de arriba.
+  const tiposAMostrar = tipo === "Gasto" ? ["Gasto", "Ingreso"] : [tipo];
   const realMovs = movimientos
-    .filter((m) => m.tipo === tipo && m.categoria === categoria && (m.subcategoria || "") === sub && monthKeyOf(m) === mes)
+    .filter((m) => tiposAMostrar.includes(m.tipo) && m.categoria === categoria && (m.subcategoria || "") === sub && monthKeyOf(m) === mes)
     .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
   const movHtml =
     realMovs
       .map(
         (m) => `<div class="category-row-top" style="padding:5px 0;font-size:12px;">
-        <span style="color:var(--text-muted)">${formatFechaCorta(m.fecha)} · ${m.detalle || "—"}</span>
-        <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
+        <span style="color:var(--text-muted)">
+          ${formatFechaCorta(m.fecha)} · ${m.detalle || "—"}
+          ${m.tipo === "Ingreso" && tipo === "Gasto" ? '<span class="badge badge-good" style="margin-left:4px;">reembolso</span>' : ""}
+        </span>
+        <span class="cat-amounts ${m.tipo === "Ingreso" && tipo === "Gasto" ? "income" : ""}">${m.tipo === "Ingreso" && tipo === "Gasto" ? "−" : ""}${fmtCLP(Math.abs(m.monto))}</span>
       </div>`
       )
       .join("") || '<div class="skeleton no-spinner" style="padding:6px 0;font-size:12px;">Sin movimientos reales este mes</div>';
