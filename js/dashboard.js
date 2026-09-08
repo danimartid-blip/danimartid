@@ -48,9 +48,22 @@ function avg3Real(tipo, categoria, subcategoria, mes) {
   return totals.reduce((a, b) => a + b, 0) / 3;
 }
 
+/** Un Ingreso con la MISMA categoría+subcategoría que algún Gasto EN LOS MESES
+ * RELEVANTES (los 3 de historial + el mes presupuestado) es un reembolso (tu
+ * propia convención — ej. Trabajo/Starbuck) — ya se restó del lado del Gasto en
+ * montoRealNeto. Contarlo TAMBIÉN acá lo sumaría dos veces. Acotado a esos meses
+ * (no "toda la historia") para que una fila vieja y suelta no apague un ingreso
+ * real recurrente (mismo criterio que Presupuesto.js). */
+function esReembolsoDeGasto(categoria, subcategoria, mesesRelevantes) {
+  return movimientos.some(
+    (m) => m.tipo === "Gasto" && m.categoria === categoria && (m.subcategoria || "") === subcategoria && mesesRelevantes.includes(monthKey(m))
+  );
+}
+
 /** Budgeted amount for one categoria+subcategoria: explicit override if fijado,
  * else the same 3-month-average proposal shown on the Presupuesto page. */
 function budgetForSubcategoria(mes, categoria, subcategoria, tipo = "Gasto") {
+  if (tipo === "Ingreso" && esReembolsoDeGasto(categoria, subcategoria, [...monthsBeforeExclusive(mes, 3), mes])) return 0;
   const row = presupuestoRows.find(
     (p) => p.mes === mes && p.tipo === tipo && p.categoria === categoria && p.subcategoria === subcategoria
   );

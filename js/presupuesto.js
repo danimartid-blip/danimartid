@@ -72,6 +72,18 @@ function findExplicit(mes, tipo, categoria, subcategoria) {
   );
 }
 
+/** Un Ingreso con la MISMA categoría+subcategoría que algún Gasto EN LOS MESES
+ * RELEVANTES (los 3 de historial + el mes presupuestado) es un reembolso (tu
+ * propia convención — ej. Trabajo/Starbuck). Ya se restó del lado del Gasto (ver
+ * realMonthlyTotal); presupuestarlo TAMBIÉN acá lo contaría dos veces. Acotado a
+ * esos meses para que una fila vieja y suelta (ej. un error de tipeo de hace
+ * meses) no apague un ingreso real recurrente como el interés bancario. */
+function esReembolsoDeGasto(categoria, subcategoria, mesesRelevantes) {
+  return movimientos.some(
+    (m) => m.tipo === "Gasto" && m.categoria === categoria && (m.subcategoria || "") === subcategoria && mesesRelevantes.includes(monthKeyOf(m))
+  );
+}
+
 /** Everything needed to render/edit one subcategoria's budget line for `mes`. */
 function subInfo(tipo, categoria, subcategoria, mes, historyMonths) {
   const historyTotals = historyMonths.map((mk) => realMonthlyTotal(tipo, categoria, subcategoria, mk));
@@ -83,6 +95,7 @@ function subInfo(tipo, categoria, subcategoria, mes, historyMonths) {
     avg,
     effective: explicit ? explicit.monto : avg,
     row: explicit ? explicit.row : null,
+    esReembolso: tipo === "Ingreso" && esReembolsoDeGasto(categoria, subcategoria, [...historyMonths, mes]),
   };
 }
 
@@ -143,8 +156,11 @@ const subKeyOf = (tipo, categoria, sub) => `${tipo}|${categoria}|${sub}`;
 function buildCategoriaBlock(tipo, categoria, mes, historyMonths) {
   const subs = subcategoriasFor(tipo, categoria, mes, historyMonths);
   const subInfos = subs.map((sub) => subInfo(tipo, categoria, sub, mes, historyMonths));
-  const catPromedio = subInfos.reduce((s, si) => s + si.effective, 0);
-  const catHistory = historyMonths.map((_, i) => subInfos.reduce((s, si) => s + si.historyTotals[i], 0));
+  // Los reembolsos (Ingreso ya restado del lado del Gasto) no suman al total de
+  // la categoría — se muestran igual en su fila, para que no desaparezcan solos.
+  const contables = subInfos.filter((si) => !si.esReembolso);
+  const catPromedio = contables.reduce((s, si) => s + si.effective, 0);
+  const catHistory = historyMonths.map((_, i) => contables.reduce((s, si) => s + si.historyTotals[i], 0));
   const catId = `cat${++uid}`;
   const listId = `subopts${uid}`;
   const knownSubs = [...(categoriaSubMap[categoria] || [])].sort();
@@ -215,9 +231,12 @@ function buildSubcategoriaRow(si, historyMonths, tipo, categoria) {
   const label = si.sub || "General";
   const subId = `sub${++uid}`;
   const isOpen = openSubs.has(subKeyOf(tipo, categoria, si.sub));
+  const etiqueta = si.esReembolso
+    ? '<span class="badge badge-muted" style="font-size:10px;">no suma — ya restado del gasto</span>'
+    : si.row ? "" : ' <span class="meta" style="font-size:10px;">(sugerido)</span>';
   return `
-    <div class="category-row-top cat-clickable sub-clickable" data-sub="${escapeAttr(si.sub)}" data-target="${subId}" style="padding:8px 0;font-size:13px;">
-      <span style="color:var(--text-secondary)">${label}${si.row ? "" : ' <span class="meta" style="font-size:10px;">(sugerido)</span>'}</span>
+    <div class="category-row-top cat-clickable sub-clickable" data-sub="${escapeAttr(si.sub)}" data-target="${subId}" style="padding:8px 0;font-size:13px;${si.esReembolso ? "opacity:.6;" : ""}">
+      <span style="color:var(--text-secondary)">${label}${etiqueta}</span>
       <span class="cat-amounts">${fmtCLP(si.effective)}</span>
     </div>
     ${buildStatsRow(si.effective, si.historyTotals, historyMonths)}
@@ -271,23 +290,29 @@ function renderSubcategoriaDetail(detail, tipo, categoria, sub, mes, si) {
       .join("") || '<div class="skeleton no-spinner" style="padding:6px 0;font-size:12px;">Sin movimientos reales este mes</div>';
 
   detail.innerHTML = `
-    <div class="inline-form">
-      <input type="number" inputmode="numeric" value="${Math.round(si.effective)}" class="edit-input">
-      <button class="btn-secondary edit-save">Guardar</button>
-      ${si.row ? `<button class="btn-secondary edit-del" title="Volver al promedio">×</button>` : ""}
-    </div>
-    <div style="font-size:11px;color:var(--text-muted);margin:8px 0 10px;">
-      ${si.row
-        ? '<span class="badge badge-good">fijado</span> Monto puesto por ti.'
-        : '<span class="badge badge-muted">sugerido</span> Promedio de los 3 meses anteriores.'}
-    </div>
+    ${si.esReembolso
+      ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;line-height:1.5;">
+          <span class="badge badge-muted">reembolso</span> Es un Ingreso con la misma categoría que un Gasto — ya se
+          descontó de ese Gasto, por eso no es editable acá ni suma al Ingreso presupuestado.
+        </div>`
+      : `<div class="inline-form">
+          <input type="number" inputmode="numeric" value="${Math.round(si.effective)}" class="edit-input">
+          <button class="btn-secondary edit-save">Guardar</button>
+          ${si.row ? `<button class="btn-secondary edit-del" title="Volver al promedio">×</button>` : ""}
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin:8px 0 10px;">
+          ${si.row
+            ? '<span class="badge badge-good">fijado</span> Monto puesto por ti.'
+            : '<span class="badge badge-muted">sugerido</span> Promedio de los 3 meses anteriores.'}
+        </div>`}
     <div style="font-size:11.5px;color:var(--text-muted);margin:10px 0 4px;font-weight:650;">Movimientos reales de este mes</div>
     ${movHtml}
   `;
 
   // OJO: siempre acotado a este panel. Los paneles cerrados quedan en el DOM,
   // así que un lookup global tomaría el input de otra subcategoría.
-  detail.querySelector(".edit-save").addEventListener("click", async (e) => {
+  const saveBtn = detail.querySelector(".edit-save");
+  if (saveBtn) saveBtn.addEventListener("click", async (e) => {
     e.stopPropagation();
     const val = Number(detail.querySelector(".edit-input").value);
     if (isNaN(val)) return showToast("Monto inválido", true);
@@ -345,7 +370,10 @@ function render() {
   const sumTipo = (cats, tipo) =>
     cats.reduce((total, cat) => {
       const subs = subcategoriasFor(tipo, cat, mes, historyMonths);
-      return total + subs.reduce((s, sub) => s + subInfo(tipo, cat, sub, mes, historyMonths).effective, 0);
+      return total + subs.reduce((s, sub) => {
+        const si = subInfo(tipo, cat, sub, mes, historyMonths);
+        return si.esReembolso ? s : s + si.effective; // ya restado del lado del Gasto
+      }, 0);
     }, 0);
 
   const totalGasto = sumTipo(gastoCats, "Gasto");
