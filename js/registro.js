@@ -49,10 +49,16 @@ function parseAnyFecha(raw) {
   return null;
 }
 
+let cuentasReales = new Set(); // nombres normalizados de tus cuentas (Cuentas!A) — lo demás es "tarjeta de crédito"
+
 async function loadOptions() {
   try {
     // A=Fecha E=Categoria F=Subcategoria G=Medio_pago H=Estado I=Monto J=Detalle K=Fecha_vencimiento
-    const rows = await window.SheetsApi.readRange("Movimientos!A2:K100000");
+    const [rows, cuentasRows] = await Promise.all([
+      window.SheetsApi.readRange("Movimientos!A2:K100000"),
+      window.SheetsApi.readRange("Cuentas!A2:A100"),
+    ]);
+    cuentasReales = new Set(cuentasRows.filter((r) => r[0]).map((r) => r[0].trim().toLowerCase()));
     const categorias = [];
     const medios = [];
     categoriaSubMap = {};
@@ -129,6 +135,27 @@ function renderVencChips() {
 }
 
 /** El campo de vencimiento solo aplica (y es obligatorio) para "Por pagar". */
+let estadoTocadoManualmente = false;
+
+/** Débito/efectivo (una cuenta real, con saldo en la pestaña Cuentas) siempre
+ * es Pagado — la plata ya salió. Crédito (cualquier medio que NO sea una de tus
+ * cuentas) siempre es Por pagar — factura después. Se pisa solo hasta que el
+ * usuario toque el toggle de Estado a mano una vez; ahí se respeta su elección. */
+function actualizarEstadoPorMedio() {
+  if (estadoTocadoManualmente) return;
+  const medio = $("medioPago").value.trim();
+  if (!medio) return;
+
+  const esCredito = !cuentasReales.has(medio.toLowerCase());
+  const destino = esCredito ? "Por pagar" : "Pagado";
+  if (state.estado === destino) return;
+
+  state.estado = destino;
+  $("estadoToggle").querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+  $("estadoToggle").querySelector(`[data-estado="${destino}"]`).classList.add("active");
+  actualizarVencSection();
+}
+
 function actualizarVencSection() {
   const esPorPagar = state.estado === "Por pagar";
   $("vencSection").hidden = !esPorPagar;
@@ -221,6 +248,7 @@ function resetFormForNextEntry() {
   $("estadoToggle").querySelectorAll("button").forEach((b) => b.classList.remove("active"));
   estadoBtn.classList.add("active");
   state.estado = "Pagado";
+  estadoTocadoManualmente = false; // vuelve a auto-elegirse según el próximo medio de pago
   actualizarVencSection(); // oculta la sección de vencimiento (ya no aplica, quedó en Pagado)
 
   $("cuotaSection").hidden = true;
@@ -337,8 +365,12 @@ async function init() {
   $("fecha").value = todayISO();
   wireToggle("tipoToggle", "type", "tipo");
   wireToggle("estadoToggle", "estado", "estado");
-  $("estadoToggle").addEventListener("click", actualizarVencSection);
+  $("estadoToggle").addEventListener("click", () => {
+    estadoTocadoManualmente = true; // el usuario decidió — se deja de auto-elegir por el medio
+    actualizarVencSection();
+  });
   $("medioPago").addEventListener("input", () => {
+    actualizarEstadoPorMedio(); // débito/cuenta real -> Pagado, tarjeta de crédito -> Por pagar
     if (!$("vencSection").hidden) renderVencChips();
     renderUltimosMovimientos();
   });
