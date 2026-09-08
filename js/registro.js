@@ -198,10 +198,36 @@ function todayISO() {
   return d.toISOString().slice(0, 10);
 }
 
+/** Borra TODO el formulario tras guardar — la fecha vuelve a hoy, Tipo y Estado
+ * a su default, y el foco queda en Medio de pago (primer campo del flujo). */
 function resetFormForNextEntry() {
   $("monto").value = "";
+  $("categoria").value = "";
+  $("subcategoria").value = "";
+  $("medioPago").value = "";
   $("detalle").value = "";
-  $("monto").focus();
+  $("fecha").value = todayISO();
+  $("fechaVencimiento").value = "";
+  $("cuotasTotales").value = "";
+  $("cuotaDevengada").value = "";
+  $("mesPagoOpcion").value = "";
+
+  const tipoBtn = $("tipoToggle").querySelector('[data-type="Gasto"]');
+  $("tipoToggle").querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+  tipoBtn.classList.add("active");
+  state.tipo = "Gasto";
+
+  const estadoBtn = $("estadoToggle").querySelector('[data-estado="Pagado"]');
+  $("estadoToggle").querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+  estadoBtn.classList.add("active");
+  state.estado = "Pagado";
+  actualizarVencSection(); // oculta la sección de vencimiento (ya no aplica, quedó en Pagado)
+
+  $("cuotaSection").hidden = true;
+  $("toggleCuota").textContent = "+ ¿Es una cuota?";
+
+  $("ultimosMovMedio").hidden = true;
+  $("medioPago").focus();
 }
 
 /** Convierte "2026-10-10" al formato que usa la planilla: "10-10-2026". */
@@ -292,7 +318,6 @@ async function handleSubmit(e) {
     showToast("Guardado ✓");
     resetFormForNextEntry();
     await loadOptions(); // refresh datalists in case a new category was typed
-    renderUltimosMovimientos(); // así ves de una que quedó registrado
   } catch (err) {
     console.error(err);
     showToast("Error al guardar", true);
