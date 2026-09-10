@@ -567,7 +567,7 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
     grande.className = "stat-value stat-value-hero " + (liquidezReal >= 0 ? "income" : "expense");
     linea.textContent = "Sin presupuesto para este mes";
     linea.style.color = "var(--text-muted)";
-    help.textContent = "Saldo en cuentas menos lo pendiente por pagar.";
+    help.textContent = "Saldo en cuentas menos lo pendiente por pagar que vence pronto (próximos ~40 días). El total completo de deuda pendiente, sin importar cuándo vence, está en \"Por pagar (pendiente)\" más abajo.";
     return;
   }
 
@@ -582,7 +582,7 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
     grande.className = "stat-value stat-value-hero " + (liquidezReal >= 0 ? "income" : "expense");
     linea.innerHTML = `${nombreMes} ya pasó`;
     linea.style.color = "var(--text-muted)";
-    help.textContent = "La proyección solo aplica al mes en curso o a meses futuros.";
+    help.textContent = "La proyección solo aplica al mes en curso o a meses futuros. Este número es el saldo en cuentas menos lo \"Por pagar\" que vence pronto (próximos ~40 días).";
     return;
   }
 
@@ -604,7 +604,7 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
 
   linea.innerHTML = `Saldo actual: <strong>${fmtCLP(liquidezReal)}</strong>`;
   linea.style.color = liquidezReal >= 0 ? "var(--good)" : "var(--critical)";
-  help.textContent = `Con cuánto cierras ${nombreMes} si cumples el presupuesto: al saldo actual se le quita lo real del mes (${fmtCLP(realIngresos - realGastos)}) y se le aplica el neto presupuestado (${fmtCLP(resultadoPpto)}).`;
+  help.textContent = `Con cuánto cierras ${nombreMes} si cumples el presupuesto: al saldo actual (que ya descuenta lo "Por pagar" que vence pronto, próximos ~40 días — la deuda más lejana no pesa acá todavía) se le quita lo real del mes (${fmtCLP(realIngresos - realGastos)}) y se le aplica el neto presupuestado (${fmtCLP(resultadoPpto)}).`;
 }
 
 function renderPorPagarDetail(pendientes) {
