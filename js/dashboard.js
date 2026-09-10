@@ -386,24 +386,20 @@ function buildSubcategoryRow(cat, sub, subMonto, selectedKey) {
   const rowId = `sub-${cat}-${sub}`.replace(/[^a-zA-Z0-9]/g, "");
   const subReal = sub === "(sin subcategoría)" ? "" : sub;
   const subMeta = budgetForSubcategoria(selectedKey, cat, subReal);
-  // Apertura: si este Gasto tiene un reembolso pareado (ej. Pago Prestamo /
-  // Cobro prestamo), se muestra el gasto bruto y el reembolso por separado en
-  // vez de solo el neto — igual que en Presupuesto.
-  const reembolso = reembolsoInfoFor(cat, subReal, selectedKey);
-  const reembolsoHtml = reembolso
-    ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;color:var(--text-muted);padding:0 0 8px;">
-        <span>Gasto ${fmtCLP(reembolso.brutoAvg)} · Reembolso −${fmtCLP(reembolso.montoAvg)} <span style="opacity:.75;">(${escapeAttr(reembolso.label)})</span></span>
-        <span class="badge ${reembolso.recibidoEsteMes ? "badge-good" : "badge-muted"}" style="font-size:10px;white-space:nowrap;">
-          ${reembolso.recibidoEsteMes ? "✓ recibido este mes" : "⏳ pendiente este mes"}
-        </span>
-      </div>`
-    : "";
+  // Nota: la apertura de gasto+reembolso (bruto/reembolso/recibido-o-no) ya no
+  // se muestra acá como resumen — vive en el detalle que se abre al pinchar la
+  // fila (wireSubcategoryToggles ya incluye ahí los movimientos del reembolso
+  // pareado). Acá se mantiene todo parejo: monto + "de $meta" siempre con la
+  // misma forma, y una barra siempre presente (vacía si no hay presupuesto),
+  // para que ninguna fila se vea distinta a las demás.
+  const hasMeta = subMeta !== null && subMeta > 0;
+  const pct = hasMeta ? Math.round((subMonto / subMeta) * 100) : null;
   return `
     <div class="category-row-top cat-clickable sub-clickable" data-cat="${escapeAttr(cat)}" data-sub="${escapeAttr(sub)}" data-key="${selectedKey}" data-target="${rowId}" style="padding:8px 0;font-size:13px;">
       <span style="color:var(--text-secondary)">${sub}</span>
-      <span class="cat-amounts">${fmtCLP(subMonto)}${subMeta ? ` <span class="meta">de ${fmtCLP(subMeta)}</span>` : ""}</span>
+      <span class="cat-amounts">${fmtCLP(subMonto)} <span class="meta">${hasMeta ? `de ${fmtCLP(subMeta)}` : "sin ppto."}</span></span>
     </div>
-    ${reembolsoHtml}
+    <div class="bar-track bar-track-sub">${hasMeta ? `<div class="bar-fill${pct > 100 ? " over" : ""}" style="width:${Math.min(pct, 100)}%"></div>` : ""}</div>
     <div class="sub-detail" id="${rowId}" hidden></div>`;
 }
 
@@ -472,7 +468,8 @@ function renderStats(selectedKey) {
   }
   for (const [cat, monto] of sorted) {
     const meta = budgetForCategoria(selectedKey, cat);
-    const pct = meta ? Math.round((monto / meta) * 100) : null;
+    const hasMeta = meta !== null && meta > 0;
+    const pct = hasMeta ? Math.round((monto / meta) * 100) : null;
     const row = document.createElement("div");
     row.className = "category-row";
 
@@ -497,9 +494,9 @@ function renderStats(selectedKey) {
     row.innerHTML = `
       <div class="category-row-top cat-clickable">
         <span class="cat-name">${cat}</span>
-        <span class="cat-amounts">${fmtCLP(monto)}${meta ? ` <span class="meta">de ${fmtCLP(meta)}</span>` : ""}</span>
+        <span class="cat-amounts">${fmtCLP(monto)} <span class="meta">${hasMeta ? `de ${fmtCLP(meta)}` : "sin ppto."}</span></span>
       </div>
-      ${meta ? `<div class="bar-track"><div class="bar-fill${pct > 100 ? " over" : ""}" style="width:${Math.min(pct, 100)}%"></div></div>` : ""}
+      <div class="bar-track">${hasMeta ? `<div class="bar-fill${pct > 100 ? " over" : ""}" style="width:${Math.min(pct, 100)}%"></div>` : ""}</div>
       <div class="cat-detail" hidden>
         <div style="margin-top:14px;">${sparkline}</div>
         <div style="margin-top:12px;">${subRows || '<div class="skeleton no-spinner" style="padding:8px 0;">Sin movimientos este mes</div>'}</div>
