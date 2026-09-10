@@ -72,6 +72,35 @@ function singleBucket(categoria, meses, tipo) {
   return set.size === 1 ? [...set][0] : null;
 }
 
+/** Para un Gasto, separa cuánto es el gasto bruto y cuánto el reembolso que se
+ * le neta ese mes (en vez de devolver solo el neto) — así se puede mostrar la
+ * "apertura" (gasto real + reembolso) en la misma línea en vez de un solo
+ * número mezclado. reembolsoLabel es la subcategoría real del Ingreso cuando es
+ * distinta a la del Gasto (caso "categoría de a par", ej. Pago Prestamo /
+ * Cobro prestamo). */
+function gastoMonthlyBreakdown(categoria, subcategoria, monthKey) {
+  const sub = normSub(subcategoria);
+  const gastoBucket = singleBucket(categoria, [monthKey], "Gasto");
+  const ingresoBucket = singleBucket(categoria, [monthKey], "Ingreso");
+  const pairMode = gastoBucket !== null && ingresoBucket !== null && gastoBucket === sub;
+  let bruto = 0;
+  let reembolso = 0;
+  let reembolsoLabel = null;
+  for (const m of movimientos) {
+    if (m.categoria !== categoria || monthKeyOf(m) !== monthKey) continue;
+    if (m.tipo === "Gasto" && normSub(m.subcategoria) === sub) bruto += Math.abs(m.monto);
+    else if (m.tipo === "Ingreso") {
+      const exact = normSub(m.subcategoria) === sub;
+      const paired = pairMode && normSub(m.subcategoria) === ingresoBucket;
+      if (exact || paired) {
+        reembolso += m.monto;
+        if (paired && !exact) reembolsoLabel = m.subcategoria;
+      }
+    }
+  }
+  return { bruto, reembolso, neto: bruto - reembolso, reembolsoLabel };
+}
+
 /** Gasto (o ingreso) real de una categoría/subcategoría en un mes. Para Gasto,
  * NETO de reembolsos: un Ingreso con la MISMA categoría+subcategoría ese mes se
  * descuenta — es la convención que ya usas para marcar "esto me lo devuelven"
@@ -80,23 +109,14 @@ function singleBucket(categoria, meses, tipo) {
  * "de a par" (singleBucket en ambos lados) también se descuenta el Ingreso
  * aunque use otra etiqueta de subcategoría. */
 function realMonthlyTotal(tipo, categoria, subcategoria, monthKey) {
+  if (tipo === "Gasto") return gastoMonthlyBreakdown(categoria, subcategoria, monthKey).neto;
   let total = 0;
-  let reembolso = 0;
-  let pairedIngresoBucket = null;
-  if (tipo === "Gasto") {
-    const gastoBucket = singleBucket(categoria, [monthKey], "Gasto");
-    const ingresoBucket = singleBucket(categoria, [monthKey], "Ingreso");
-    if (gastoBucket !== null && ingresoBucket !== null && gastoBucket === normSub(subcategoria)) pairedIngresoBucket = ingresoBucket;
-  }
   for (const m of movimientos) {
-    if (m.categoria !== categoria || monthKeyOf(m) !== monthKey) continue;
-    const subMatches = normSub(m.subcategoria) === normSub(subcategoria);
-    if (m.tipo === tipo && subMatches) total += Math.abs(m.monto);
-    else if (tipo === "Gasto" && m.tipo === "Ingreso") {
-      if (subMatches || (pairedIngresoBucket !== null && normSub(m.subcategoria) === pairedIngresoBucket)) reembolso += m.monto;
+    if (m.categoria === categoria && normSub(m.subcategoria) === normSub(subcategoria) && monthKeyOf(m) === monthKey && m.tipo === tipo) {
+      total += Math.abs(m.monto);
     }
   }
-  return total - reembolso;
+  return total;
 }
 
 function findExplicit(mes, tipo, categoria, subcategoria) {
@@ -128,7 +148,7 @@ function subInfo(tipo, categoria, subcategoria, mes, historyMonths) {
   const historyTotals = historyMonths.map((mk) => realMonthlyTotal(tipo, categoria, subcategoria, mk));
   const avg = historyTotals.reduce((a, b) => a + b, 0) / historyMonths.length;
   const explicit = findExplicit(mes, tipo, categoria, subcategoria);
-  return {
+  const result = {
     sub: subcategoria,
     historyTotals,
     avg,
@@ -136,6 +156,25 @@ function subInfo(tipo, categoria, subcategoria, mes, historyMonths) {
     row: explicit ? explicit.row : null,
     esReembolso: tipo === "Ingreso" && esReembolsoDeGasto(categoria, subcategoria, [...historyMonths, mes]),
   };
+  // Apertura: si este Gasto tiene un reembolso pareado, se guarda el desglose
+  // (bruto/reembolso por mes, más el mes actual) para mostrarlo en la misma
+  // línea en vez de solo el neto.
+  if (tipo === "Gasto") {
+    const allMonths = [...historyMonths, mes];
+    const breakdowns = allMonths.map((mk) => gastoMonthlyBreakdown(categoria, subcategoria, mk));
+    if (breakdowns.some((b) => b.reembolso !== 0)) {
+      const histBreakdowns = breakdowns.slice(0, historyMonths.length);
+      const esteMes = breakdowns[breakdowns.length - 1];
+      result.reembolso = {
+        label: breakdowns.map((b) => b.reembolsoLabel).find(Boolean) || subcategoria,
+        brutoAvg: histBreakdowns.reduce((s, b) => s + b.bruto, 0) / historyMonths.length,
+        montoAvg: histBreakdowns.reduce((s, b) => s + b.reembolso, 0) / historyMonths.length,
+        montoEsteMes: esteMes.reembolso,
+        recibidoEsteMes: esteMes.reembolso !== 0,
+      };
+    }
+  }
+  return result;
 }
 
 /** Subcategorias worth showing for a categoria: had real spend in the trailing 3
@@ -166,7 +205,15 @@ function categoriasFor(tipo, mes, historyMonths) {
   const all = new Set();
   for (const m of movimientos) if (m.tipo === tipo) all.add(m.categoria);
   for (const r of presRows) if (r.tipo === tipo) all.add(r.categoria);
-  return [...all].filter((cat) => subcategoriasFor(tipo, cat, mes, historyMonths).length > 0);
+  return [...all].filter((cat) => {
+    const subs = subcategoriasFor(tipo, cat, mes, historyMonths);
+    if (subs.length === 0) return false;
+    if (tipo !== "Ingreso") return true;
+    // Si TODAS las subcategorías de Ingreso de esta categoría son reembolsos de
+    // un Gasto, ya se muestran en la línea del Gasto — no queda nada que
+    // presupuestar acá, así que la categoría entera se omite de este lado.
+    return subs.some((sub) => !esReembolsoDeGasto(cat, sub, [...historyMonths, mes]));
+  });
 }
 
 function buildStatsRow(promedio, historyTotals, historyMonths) {
@@ -206,7 +253,8 @@ function buildCategoriaBlock(tipo, categoria, mes, historyMonths) {
   const subs = subcategoriasFor(tipo, categoria, mes, historyMonths);
   const subInfos = subs.map((sub) => subInfo(tipo, categoria, sub, mes, historyMonths));
   // Los reembolsos (Ingreso ya restado del lado del Gasto) no suman al total de
-  // la categoría — se muestran igual en su fila, para que no desaparezcan solos.
+  // la categoría, y ya no se muestran como fila propia acá — se muestran en la
+  // "apertura" de la línea del Gasto al que pertenecen (ver subInfo/reembolso).
   const contables = subInfos.filter((si) => !si.esReembolso);
   const catPromedio = contables.reduce((s, si) => s + si.effective, 0);
   const catHistory = historyMonths.map((_, i) => contables.reduce((s, si) => s + si.historyTotals[i], 0));
@@ -217,7 +265,7 @@ function buildCategoriaBlock(tipo, categoria, mes, historyMonths) {
   const catKey = catKeyOf(tipo, categoria);
   const catOpen = openCats.has(catKey);
 
-  const subHtml = subInfos
+  const subHtml = contables
     .sort((a, b) => b.effective - a.effective)
     .map((si) => buildSubcategoriaRow(si, historyMonths, tipo, categoria))
     .join("");
@@ -283,11 +331,23 @@ function buildSubcategoriaRow(si, historyMonths, tipo, categoria) {
   const etiqueta = si.esReembolso
     ? '<span class="badge badge-muted" style="font-size:10px;">no suma — ya restado del gasto</span>'
     : si.row ? "" : ' <span class="meta" style="font-size:10px;">(sugerido)</span>';
+  // Apertura: si este Gasto tiene un reembolso pareado, se muestra el gasto
+  // bruto y el reembolso por separado en la misma línea, en vez de solo el
+  // neto — más un aviso de si el reembolso de ESTE mes ya llegó o no.
+  const reembolsoHtml = si.reembolso
+    ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;color:var(--text-muted);padding:0 0 8px;">
+        <span>Gasto ${fmtCLP(si.reembolso.brutoAvg)} · Reembolso −${fmtCLP(si.reembolso.montoAvg)} <span style="opacity:.75;">(${escapeAttr(si.reembolso.label)})</span></span>
+        <span class="badge ${si.reembolso.recibidoEsteMes ? "badge-good" : "badge-muted"}" style="font-size:10px;white-space:nowrap;">
+          ${si.reembolso.recibidoEsteMes ? "✓ recibido este mes" : "⏳ pendiente este mes"}
+        </span>
+      </div>`
+    : "";
   return `
     <div class="category-row-top cat-clickable sub-clickable" data-sub="${escapeAttr(si.sub)}" data-target="${subId}" style="padding:8px 0;font-size:13px;${si.esReembolso ? "opacity:.6;" : ""}">
       <span style="color:var(--text-secondary)">${label}${etiqueta}</span>
       <span class="cat-amounts">${fmtCLP(si.effective)}</span>
     </div>
+    ${reembolsoHtml}
     ${buildStatsRow(si.effective, si.historyTotals, historyMonths)}
     <div class="sub-detail${isOpen ? " no-anim" : ""}" id="${subId}" ${isOpen ? "" : "hidden"}></div>`;
 }
@@ -319,11 +379,15 @@ function wireSubcategoriaToggles(scope, tipo, categoria, mes, historyMonths) {
 }
 
 function renderSubcategoriaDetail(detail, tipo, categoria, sub, mes, si) {
-  // Para Gasto, se incluyen también los reembolsos (Ingreso de la misma
-  // categoría/subcategoría) — es lo que se está netando en el monto de arriba.
+  // Para Gasto, se incluyen también los reembolsos: un Ingreso de la misma
+  // subcategoría, o —si es una categoría "de a par" como Pago Prestamo/Cobro
+  // prestamo— de la subcategoría pareada (si.reembolso.label) aunque el texto
+  // sea distinto. Es lo que se está netando en el monto de arriba.
   const tiposAMostrar = tipo === "Gasto" ? ["Gasto", "Ingreso"] : [tipo];
+  const subsAMostrar = new Set([normSub(sub)]);
+  if (si.reembolso) subsAMostrar.add(normSub(si.reembolso.label));
   const realMovs = movimientos
-    .filter((m) => tiposAMostrar.includes(m.tipo) && m.categoria === categoria && (m.subcategoria || "") === sub && monthKeyOf(m) === mes)
+    .filter((m) => tiposAMostrar.includes(m.tipo) && m.categoria === categoria && subsAMostrar.has(normSub(m.subcategoria)) && monthKeyOf(m) === mes)
     .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
   const movHtml =
     realMovs
@@ -353,7 +417,13 @@ function renderSubcategoriaDetail(detail, tipo, categoria, sub, mes, si) {
           ${si.row
             ? '<span class="badge badge-good">fijado</span> Monto puesto por ti.'
             : '<span class="badge badge-muted">sugerido</span> Promedio de los 3 meses anteriores.'}
-        </div>`}
+        </div>
+        ${si.reembolso
+          ? `<div style="font-size:11px;color:var(--text-muted);margin:0 0 10px;line-height:1.5;">
+              <span class="badge badge-muted">apertura</span> El monto de arriba ya es neto de reembolso — abajo se ven
+              el gasto y el "${escapeAttr(si.reembolso.label)}" por separado, tal como quedaron registrados.
+            </div>`
+          : ""}`}
     <div style="font-size:11.5px;color:var(--text-muted);margin:10px 0 4px;font-weight:650;">Movimientos reales de este mes</div>
     ${movHtml}
   `;
