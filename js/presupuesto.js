@@ -50,25 +50,58 @@ function formatFechaCorta(fecha) {
   return s;
 }
 
+/** Compara subcategorías ignorando mayúsculas/espacios — para que "Pago prestamo"
+ * y "Pago Prestamo" (tipeo distinto) se traten como la misma. */
+function normSub(s) {
+  return (s || "").trim().toLowerCase();
+}
+
+/** La única subcategoría (normalizada) de `tipo` bajo esta categoría en estos
+ * meses, ignorando filas en $0 (placeholders) — o null si hay cero o más de una.
+ * Sirve para detectar categorías "de a par" (ej. Pago Prestamo: lo pagas con la
+ * subcategoría "Pago Prestamo" y te lo devuelven con la subcategoría "Cobro
+ * prestamo" — etiquetas distintas pero sin ambigüedad, porque cada lado tiene un
+ * solo bucket). Exigir single-bucket en AMBOS lados evita falsos positivos como
+ * Sueldo (un solo bucket de Gasto, pero muchos Ingresos que no tienen nada que
+ * ver — ahí no debe aplicar). */
+function singleBucket(categoria, meses, tipo) {
+  const set = new Set();
+  for (const m of movimientos) {
+    if (m.tipo === tipo && m.categoria === categoria && meses.includes(monthKeyOf(m)) && m.monto !== 0) set.add(normSub(m.subcategoria));
+  }
+  return set.size === 1 ? [...set][0] : null;
+}
+
 /** Gasto (o ingreso) real de una categoría/subcategoría en un mes. Para Gasto,
  * NETO de reembolsos: un Ingreso con la MISMA categoría+subcategoría ese mes se
  * descuenta — es la convención que ya usas para marcar "esto me lo devuelven"
  * (ej. Trabajo/Starbuck para un café que te reembolsan). Un Ingreso nunca se
- * neta contra gastos — solo aplica cuando se pide el Gasto. */
+ * neta contra gastos — solo aplica cuando se pide el Gasto. Si la categoría es
+ * "de a par" (singleBucket en ambos lados) también se descuenta el Ingreso
+ * aunque use otra etiqueta de subcategoría. */
 function realMonthlyTotal(tipo, categoria, subcategoria, monthKey) {
   let total = 0;
   let reembolso = 0;
+  let pairedIngresoBucket = null;
+  if (tipo === "Gasto") {
+    const gastoBucket = singleBucket(categoria, [monthKey], "Gasto");
+    const ingresoBucket = singleBucket(categoria, [monthKey], "Ingreso");
+    if (gastoBucket !== null && ingresoBucket !== null && gastoBucket === normSub(subcategoria)) pairedIngresoBucket = ingresoBucket;
+  }
   for (const m of movimientos) {
-    if (m.categoria !== categoria || (m.subcategoria || "") !== subcategoria || monthKeyOf(m) !== monthKey) continue;
-    if (m.tipo === tipo) total += Math.abs(m.monto);
-    else if (tipo === "Gasto" && m.tipo === "Ingreso") reembolso += m.monto;
+    if (m.categoria !== categoria || monthKeyOf(m) !== monthKey) continue;
+    const subMatches = normSub(m.subcategoria) === normSub(subcategoria);
+    if (m.tipo === tipo && subMatches) total += Math.abs(m.monto);
+    else if (tipo === "Gasto" && m.tipo === "Ingreso") {
+      if (subMatches || (pairedIngresoBucket !== null && normSub(m.subcategoria) === pairedIngresoBucket)) reembolso += m.monto;
+    }
   }
   return total - reembolso;
 }
 
 function findExplicit(mes, tipo, categoria, subcategoria) {
   return presRows.find(
-    (r) => r.mes === mes && r.tipo === tipo && r.categoria === categoria && (r.subcategoria || "") === subcategoria
+    (r) => r.mes === mes && r.tipo === tipo && r.categoria === categoria && normSub(r.subcategoria) === normSub(subcategoria)
   );
 }
 
@@ -77,11 +110,17 @@ function findExplicit(mes, tipo, categoria, subcategoria) {
  * propia convención — ej. Trabajo/Starbuck). Ya se restó del lado del Gasto (ver
  * realMonthlyTotal); presupuestarlo TAMBIÉN acá lo contaría dos veces. Acotado a
  * esos meses para que una fila vieja y suelta (ej. un error de tipeo de hace
- * meses) no apague un ingreso real recurrente como el interés bancario. */
+ * meses) no apague un ingreso real recurrente como el interés bancario. También
+ * cubre categorías "de a par" con etiquetas distintas por lado (singleBucket). */
 function esReembolsoDeGasto(categoria, subcategoria, mesesRelevantes) {
-  return movimientos.some(
-    (m) => m.tipo === "Gasto" && m.categoria === categoria && (m.subcategoria || "") === subcategoria && mesesRelevantes.includes(monthKeyOf(m))
+  const sub = normSub(subcategoria);
+  const exact = movimientos.some(
+    (m) => m.tipo === "Gasto" && m.categoria === categoria && normSub(m.subcategoria) === sub && mesesRelevantes.includes(monthKeyOf(m))
   );
+  if (exact) return true;
+  const gastoBucket = singleBucket(categoria, mesesRelevantes, "Gasto");
+  const ingresoBucket = singleBucket(categoria, mesesRelevantes, "Ingreso");
+  return gastoBucket !== null && ingresoBucket !== null && ingresoBucket === sub;
 }
 
 /** Everything needed to render/edit one subcategoria's budget line for `mes`. */
@@ -102,15 +141,25 @@ function subInfo(tipo, categoria, subcategoria, mes, historyMonths) {
 /** Subcategorias worth showing for a categoria: had real spend in the trailing 3
  * months, or already have an explicit budget line this month. */
 function subcategoriasFor(tipo, categoria, mes, historyMonths) {
-  const set = new Set();
+  // Si "Pago prestamo" y "Pago Prestamo" son la misma subcategoría con tipeo
+  // distinto, se muestran como UNA sola fila (la variante más usada) en vez de
+  // partir el gasto en dos filas separadas.
+  const weightByRaw = new Map(); // raw -> peso acumulado
+  const addWeight = (raw, weight) => weightByRaw.set(raw, (weightByRaw.get(raw) || 0) + weight);
   for (const m of movimientos) {
     if (m.tipo !== tipo || m.categoria !== categoria) continue;
-    if (historyMonths.includes(monthKeyOf(m))) set.add(m.subcategoria || "");
+    if (historyMonths.includes(monthKeyOf(m))) addWeight(m.subcategoria || "", 1);
   }
   for (const r of presRows) {
-    if (r.mes === mes && r.tipo === tipo && r.categoria === categoria) set.add(r.subcategoria || "");
+    if (r.mes === mes && r.tipo === tipo && r.categoria === categoria) addWeight(r.subcategoria || "", 1000);
   }
-  return [...set];
+  const repByNorm = new Map(); // normSub -> {raw, weight} del más pesado
+  for (const [raw, weight] of weightByRaw) {
+    const key = normSub(raw);
+    const cur = repByNorm.get(key);
+    if (!cur || weight > cur.weight) repByNorm.set(key, { raw, weight });
+  }
+  return [...repByNorm.values()].map((v) => v.raw);
 }
 
 function categoriasFor(tipo, mes, historyMonths) {

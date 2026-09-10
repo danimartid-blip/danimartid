@@ -23,21 +23,53 @@ function monthsBeforeExclusive(mes, n) {
   return out;
 }
 
+/** Compara subcategorías ignorando mayúsculas/espacios — para que "Pago prestamo"
+ * y "Pago Prestamo" (typeos de tipeo distinto) se traten como la misma. */
+function normSub(s) {
+  return (s || "").trim().toLowerCase();
+}
+
+/** La única subcategoría (normalizada) de `tipo` bajo esta categoría en estos
+ * meses, ignorando filas en $0 (placeholders) — o null si hay cero o más de una.
+ * Sirve para detectar categorías "de a par" (ej. Pago Prestamo: lo pagas con la
+ * subcategoría "Pago Prestamo" y te lo devuelven con la subcategoría "Cobro
+ * prestamo" — etiquetas distintas pero sin ambigüedad de a qué se refieren,
+ * porque cada lado tiene un solo bucket). No se usa cuando el Gasto tiene VARIAS
+ * subcategorías (ej. Sueldo: un solo bucket de Gasto pero muchos Ingresos que no
+ * tienen nada que ver — ahí NO debe aplicar, y por eso exigimos que AMBOS lados
+ * sean single-bucket). */
+function singleBucket(categoria, meses, tipo) {
+  const set = new Set();
+  for (const m of movimientos) {
+    if (m.tipo === tipo && m.categoria === categoria && meses.includes(monthKey(m)) && m.monto !== 0) set.add(normSub(m.subcategoria));
+  }
+  return set.size === 1 ? [...set][0] : null;
+}
+
 /** Gasto (o ingreso) real de una categoría en un mes. Para Gasto, NETO de
  * reembolsos: si hay un Ingreso con la MISMA categoría (y misma subcategoría,
  * si se especifica) ese mes, se descuenta — es tu propia convención para marcar
  * "esto me lo van a devolver" (ej. el café de Starbucks que te reembolsan
  * queda anotado también como Trabajo/Starbuck). subcategoria === undefined =>
  * toda la categoría junta. Un Ingreso nunca se neta contra gastos — solo aplica
- * cuando se pide el Gasto. */
+ * cuando se pide el Gasto. Si la categoría es "de a par" (singleBucket en ambos
+ * lados, ver arriba) también se descuenta el Ingreso aunque use otra etiqueta. */
 function montoRealNeto(tipo, categoria, mes, subcategoria) {
   let total = 0;
   let reembolso = 0;
+  let pairedIngresoBucket = null;
+  if (subcategoria !== undefined) {
+    const gastoBucket = singleBucket(categoria, [mes], "Gasto");
+    const ingresoBucket = singleBucket(categoria, [mes], "Ingreso");
+    if (gastoBucket !== null && ingresoBucket !== null && gastoBucket === normSub(subcategoria)) pairedIngresoBucket = ingresoBucket;
+  }
   for (const m of movimientos) {
     if (m.categoria !== categoria || monthKey(m) !== mes) continue;
-    if (subcategoria !== undefined && (m.subcategoria || "") !== subcategoria) continue;
-    if (m.tipo === tipo) total += Math.abs(m.monto);
-    else if (tipo === "Gasto" && m.tipo === "Ingreso") reembolso += m.monto;
+    const subMatches = subcategoria === undefined || normSub(m.subcategoria) === normSub(subcategoria);
+    if (m.tipo === tipo && subMatches) total += Math.abs(m.monto);
+    else if (tipo === "Gasto" && m.tipo === "Ingreso") {
+      if (subMatches || (pairedIngresoBucket !== null && normSub(m.subcategoria) === pairedIngresoBucket)) reembolso += m.monto;
+    }
   }
   return total - reembolso;
 }
@@ -53,11 +85,17 @@ function avg3Real(tipo, categoria, subcategoria, mes) {
  * propia convención — ej. Trabajo/Starbuck) — ya se restó del lado del Gasto en
  * montoRealNeto. Contarlo TAMBIÉN acá lo sumaría dos veces. Acotado a esos meses
  * (no "toda la historia") para que una fila vieja y suelta no apague un ingreso
- * real recurrente (mismo criterio que Presupuesto.js). */
+ * real recurrente (mismo criterio que Presupuesto.js). También cubre categorías
+ * "de a par" con etiquetas distintas por lado (ver singleBucket). */
 function esReembolsoDeGasto(categoria, subcategoria, mesesRelevantes) {
-  return movimientos.some(
-    (m) => m.tipo === "Gasto" && m.categoria === categoria && (m.subcategoria || "") === subcategoria && mesesRelevantes.includes(monthKey(m))
+  const sub = normSub(subcategoria);
+  const exact = movimientos.some(
+    (m) => m.tipo === "Gasto" && m.categoria === categoria && normSub(m.subcategoria) === sub && mesesRelevantes.includes(monthKey(m))
   );
+  if (exact) return true;
+  const gastoBucket = singleBucket(categoria, mesesRelevantes, "Gasto");
+  const ingresoBucket = singleBucket(categoria, mesesRelevantes, "Ingreso");
+  return gastoBucket !== null && ingresoBucket !== null && ingresoBucket === sub;
 }
 
 /** Budgeted amount for one categoria+subcategoria: explicit override if fijado,
@@ -75,15 +113,23 @@ function budgetForSubcategoria(mes, categoria, subcategoria, tipo = "Gasto") {
  * the categoria has no subcategorias with any recent activity at all. */
 function budgetForCategoria(mes, categoria, tipo = "Gasto") {
   const historyMonths = monthsBeforeExclusive(mes, 3);
-  const subs = new Set();
+  // Mapa normSub -> string representativa, para no contar "Pago prestamo" y
+  // "Pago Prestamo" como dos subcategorías distintas (se sumaría el gasto 2 veces).
+  const subs = new Map();
   for (const m of movimientos) {
-    if (m.tipo === tipo && m.categoria === categoria && historyMonths.includes(monthKey(m))) subs.add(m.subcategoria || "");
+    if (m.tipo === tipo && m.categoria === categoria && historyMonths.includes(monthKey(m))) {
+      const raw = m.subcategoria || "";
+      if (!subs.has(normSub(raw))) subs.set(normSub(raw), raw);
+    }
   }
   for (const p of presupuestoRows) {
-    if (p.mes === mes && p.tipo === tipo && p.categoria === categoria) subs.add(p.subcategoria || "");
+    if (p.mes === mes && p.tipo === tipo && p.categoria === categoria) {
+      const raw = p.subcategoria || "";
+      if (!subs.has(normSub(raw))) subs.set(normSub(raw), raw);
+    }
   }
   if (subs.size === 0) return null;
-  return [...subs].reduce((s, sub) => s + budgetForSubcategoria(mes, categoria, sub, tipo), 0);
+  return [...subs.values()].reduce((s, sub) => s + budgetForSubcategoria(mes, categoria, sub, tipo), 0);
 }
 
 /** Every categoria of `tipo` worth proposing a budget for (recent activity or fijado). */
