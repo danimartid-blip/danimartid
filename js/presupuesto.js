@@ -77,11 +77,20 @@ function singleBucket(categoria, meses, tipo) {
  * "apertura" (gasto real + reembolso) en la misma línea en vez de un solo
  * número mezclado. reembolsoLabel es la subcategoría real del Ingreso cuando es
  * distinta a la del Gasto (caso "categoría de a par", ej. Pago Prestamo /
- * Cobro prestamo). */
-function gastoMonthlyBreakdown(categoria, subcategoria, monthKey) {
+ * Cobro prestamo).
+ *
+ * anchorMonth fija la ventana de 4 meses (3 anteriores + anchorMonth) usada
+ * para decidir si la categoría "es de a par" — la MISMA ventana sin importar
+ * cuál mes se está totalizando (monthKey). Si se decidiera mes a mes, un mes
+ * suelto donde por coincidencia solo aparece una subcategoría de Ingreso (ej.
+ * Sueldo/Cuenta remunerada en un mes sin sueldo depositado todavía) se leería
+ * como "de a par" y netearía ingresos reales que no tienen nada que ver — el
+ * mismo falso positivo que ya se evitó en esReembolsoDeGasto. */
+function gastoMonthlyBreakdown(categoria, subcategoria, monthKey, anchorMonth = monthKey) {
   const sub = normSub(subcategoria);
-  const gastoBucket = singleBucket(categoria, [monthKey], "Gasto");
-  const ingresoBucket = singleBucket(categoria, [monthKey], "Ingreso");
+  const ventana = [...monthsBeforeExclusive(anchorMonth, 3), anchorMonth];
+  const gastoBucket = singleBucket(categoria, ventana, "Gasto");
+  const ingresoBucket = singleBucket(categoria, ventana, "Ingreso");
   const pairMode = gastoBucket !== null && ingresoBucket !== null && gastoBucket === sub;
   let bruto = 0;
   let reembolso = 0;
@@ -107,9 +116,9 @@ function gastoMonthlyBreakdown(categoria, subcategoria, monthKey) {
  * (ej. Trabajo/Starbuck para un café que te reembolsan). Un Ingreso nunca se
  * neta contra gastos — solo aplica cuando se pide el Gasto. Si la categoría es
  * "de a par" (singleBucket en ambos lados) también se descuenta el Ingreso
- * aunque use otra etiqueta de subcategoría. */
-function realMonthlyTotal(tipo, categoria, subcategoria, monthKey) {
-  if (tipo === "Gasto") return gastoMonthlyBreakdown(categoria, subcategoria, monthKey).neto;
+ * aunque use otra etiqueta de subcategoría. anchorMonth: ver gastoMonthlyBreakdown. */
+function realMonthlyTotal(tipo, categoria, subcategoria, monthKey, anchorMonth = monthKey) {
+  if (tipo === "Gasto") return gastoMonthlyBreakdown(categoria, subcategoria, monthKey, anchorMonth).neto;
   let total = 0;
   for (const m of movimientos) {
     if (m.categoria === categoria && normSub(m.subcategoria) === normSub(subcategoria) && monthKeyOf(m) === monthKey && m.tipo === tipo) {
@@ -145,7 +154,7 @@ function esReembolsoDeGasto(categoria, subcategoria, mesesRelevantes) {
 
 /** Everything needed to render/edit one subcategoria's budget line for `mes`. */
 function subInfo(tipo, categoria, subcategoria, mes, historyMonths) {
-  const historyTotals = historyMonths.map((mk) => realMonthlyTotal(tipo, categoria, subcategoria, mk));
+  const historyTotals = historyMonths.map((mk) => realMonthlyTotal(tipo, categoria, subcategoria, mk, mes));
   const avg = historyTotals.reduce((a, b) => a + b, 0) / historyMonths.length;
   const explicit = findExplicit(mes, tipo, categoria, subcategoria);
   const result = {
@@ -161,7 +170,7 @@ function subInfo(tipo, categoria, subcategoria, mes, historyMonths) {
   // línea en vez de solo el neto.
   if (tipo === "Gasto") {
     const allMonths = [...historyMonths, mes];
-    const breakdowns = allMonths.map((mk) => gastoMonthlyBreakdown(categoria, subcategoria, mk));
+    const breakdowns = allMonths.map((mk) => gastoMonthlyBreakdown(categoria, subcategoria, mk, mes));
     if (breakdowns.some((b) => b.reembolso !== 0)) {
       const histBreakdowns = breakdowns.slice(0, historyMonths.length);
       const esteMes = breakdowns[breakdowns.length - 1];
