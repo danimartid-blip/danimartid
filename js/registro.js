@@ -190,10 +190,11 @@ function renderUltimosMovimientos() {
   const box = $("ultimosMovMedio");
   if (!medio) { box.hidden = true; return; }
 
-  const hist = (historialPorMedio[medio] || [])
-    .slice()
-    .sort((a, b) => (parseAnyFecha(b.fecha) || 0) - (parseAnyFecha(a.fecha) || 0))
-    .slice(0, 6);
+  // Orden por fecha de CONTABILIZACIÓN (cuándo lo cargaste vos, o sea el orden
+  // de fila en la sheet — las filas nuevas siempre se agregan al final) y no
+  // por fecha de documento — si cargás hoy una compra atrasada del 26/08,
+  // igual queda arriba de todo, como lo último que registraste.
+  const hist = (historialPorMedio[medio] || []).slice(-6).reverse();
 
   if (hist.length === 0) {
     box.hidden = true;
