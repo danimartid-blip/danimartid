@@ -7,6 +7,28 @@ function fmtCLP(n) {
   return sign + "$" + Math.round(Math.abs(n)).toLocaleString("es-CL");
 }
 
+/** Paleta de colores por categoría — evita rojos/naranjos (esos quedan
+ * reservados para "excedido"). Cada categoría siempre saca el mismo color
+ * (hash estable de su nombre), para que el puntito junto al nombre y el fondo
+ * de su detalle al abrirla sean siempre el mismo, sesión tras sesión. */
+const CATEGORY_PALETTE = [
+  "#4f8fdb", // azul
+  "#9575cd", // púrpura
+  "#26a69a", // verde azulado
+  "#d16ba5", // rosa
+  "#c9a227", // dorado
+  "#4fb3bf", // cian
+  "#7986cb", // índigo
+  "#7cb342", // verde oliva
+  "#b0708a", // rosa viejo
+  "#5f9ea0", // cadete
+];
+function colorForCategoria(nombre) {
+  let hash = 0;
+  for (let i = 0; i < nombre.length; i++) hash = (hash * 31 + nombre.charCodeAt(i)) >>> 0;
+  return CATEGORY_PALETTE[hash % CATEGORY_PALETTE.length];
+}
+
 let movimientos = []; // { fecha, año, mes, tipo, categoria, subcategoria, medioPago, estado, monto, detalle }
 let presupuestoRows = []; // { mes, tipo, categoria, subcategoria, monto }
 let cuentas = []; // { nombre, saldo }
@@ -472,6 +494,7 @@ function renderStats(selectedKey) {
     const pct = hasMeta ? Math.round((monto / meta) * 100) : null;
     const row = document.createElement("div");
     row.className = "category-row";
+    row.style.setProperty("--cat-color", colorForCategoria(cat));
 
     const sparkline = buildTrendLineHTML(
       monthsBackFrom(selectedKey, 6),
@@ -498,8 +521,8 @@ function renderStats(selectedKey) {
       </div>
       <div class="bar-track">${hasMeta ? `<div class="bar-fill${pct > 100 ? " over" : ""}" style="width:${Math.min(pct, 100)}%"></div>` : ""}</div>
       <div class="cat-detail" hidden>
-        <div style="margin-top:14px;">${sparkline}</div>
-        <div style="margin-top:12px;">${subRows || '<div class="skeleton no-spinner" style="padding:8px 0;">Sin movimientos este mes</div>'}</div>
+        <div>${sparkline}</div>
+        <div style="margin-top:10px;">${subRows || '<div class="skeleton no-spinner" style="padding:8px 0;">Sin movimientos este mes</div>'}</div>
       </div>`;
 
     row.querySelector(".cat-clickable").addEventListener("click", () => {

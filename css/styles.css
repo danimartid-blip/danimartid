@@ -243,6 +243,7 @@ header.topbar h1 {
 /* ---------- filas categoría / subcategoría ---------- */
 
 .category-row {
+  --cat-color: var(--accent);
   padding: 12px 0;
   border-bottom: 1px solid var(--grid);
 }
@@ -256,6 +257,18 @@ header.topbar h1 {
   gap: 10px;
 }
 .category-row-top .cat-name { font-weight: 650; letter-spacing: -0.01em; }
+/* puntito de color estable por categoría — así sabés de un vistazo cuál es
+ * cuál, y cuando la abrís, el fondo del detalle usa el mismo color. */
+.category-row > .cat-clickable .cat-name::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  background: var(--cat-color);
+  vertical-align: middle;
+}
 .category-row-top .cat-amounts {
   color: var(--text);
   font-weight: 650;
@@ -293,10 +306,11 @@ header.topbar h1 {
   transform: rotate(180deg);
 }
 
-/* categoría abierta: se marca sutilmente para no perderse en la lista */
+/* categoría abierta: el nombre se pinta con SU propio color (el mismo puntito
+ * de siempre), no un acento genérico — refuerza qué categoría es la abierta. */
 .category-row:has(> .cat-detail:not([hidden])) > .cat-clickable .cat-name,
 .category-row:has(> .sub-detail:not([hidden])) > .cat-clickable .cat-name {
-  color: var(--accent);
+  color: var(--cat-color);
 }
 
 .sub-clickable::before { content: none; }
@@ -306,6 +320,15 @@ header.topbar h1 {
 }
 /* ya estaba abierto antes del re-render: no re-animar */
 .sub-detail.no-anim, .cat-detail.no-anim { animation: none; }
+/* fondo del detalle de categoría, teñido con su mismo color — así al pinchar
+ * "Otras comidas" el panel que se abre queda visualmente ligado a su puntito,
+ * y no se confunde con el fondo genérico del resto de la pantalla. */
+.cat-detail {
+  background: color-mix(in srgb, var(--cat-color) 8%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 10px 10px 6px;
+  margin-top: 6px;
+}
 .sub-detail {
   margin-left: 4px;
   padding-left: 12px;
