@@ -333,27 +333,52 @@ async function handleSubmit(e) {
     const [yyyy, mm] = fecha.split("-");
     const monto = Number($("monto").value) || 0;
     const signedMonto = state.tipo === "Gasto" ? -Math.abs(monto) : Math.abs(monto);
+    const categoria = $("categoria").value.trim();
+    const subcategoria = $("subcategoria").value.trim();
+    const medioPago = $("medioPago").value.trim();
+    const detalle = $("detalle").value.trim();
+    const vencIso = $("fechaVencimiento").value; // "" si no aplica
+    const cuotaActual = Number($("cuotaDevengada").value) || 0;
+    const cuotasTotal = Number($("cuotasTotales").value) || 0;
+    const mesPagoOpcion = $("mesPagoOpcion").value.trim() || "";
 
     const row = [
-      fecha,
-      yyyy,
-      String(Number(mm)),
-      state.tipo,
-      $("categoria").value.trim(),
-      $("subcategoria").value.trim(),
-      $("medioPago").value.trim(),
-      state.estado,
-      signedMonto,
-      $("detalle").value.trim(),
-      isoAVencimiento($("fechaVencimiento").value),
-      $("cuotaDevengada").value || "",
-      $("cuotasTotales").value || "",
-      $("mesPagoOpcion").value.trim() || "",
+      fecha, yyyy, String(Number(mm)), state.tipo, categoria, subcategoria, medioPago, state.estado,
+      signedMonto, detalle, isoAVencimiento(vencIso), cuotaActual || "", cuotasTotal || "", mesPagoOpcion,
     ];
+    const rows = [row];
+
+    // Cuotas futuras: si esta es la cuota N de M (con M > N) y tiene fecha de
+    // vencimiento, se generan de una vez las cuotas N+1..M como Por pagar, un
+    // mes después cada una (mismo día) — así se ve de entrada todo el
+    // compromiso en vez de tener que acordarse de cargarlo mes a mes.
+    let cuotasFuturasCreadas = 0;
+    if (!$("cuotaSection").hidden && cuotasTotal > cuotaActual && vencIso) {
+      const faltantes = cuotasTotal - cuotaActual;
+      // Freno ante un typo (ej. escribir "30" cuotas en vez de "3") — crear
+      // por accidente 2+ años de filas sería difícil de deshacer a mano.
+      if (faltantes > 24 && !confirm(`Esto va a crear ${faltantes} cuotas futuras (una por mes). ¿Seguro que ${cuotasTotal} es el total de cuotas correcto?`)) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Guardar";
+        return;
+      }
+      for (let n = cuotaActual + 1; n <= cuotasTotal; n++) {
+        const d = new Date(`${vencIso}T00:00:00`);
+        d.setMonth(d.getMonth() + (n - cuotaActual));
+        const y2 = d.getFullYear();
+        const m2 = d.getMonth() + 1;
+        const iso2 = `${y2}-${String(m2).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        rows.push([
+          iso2, String(y2), String(m2), state.tipo, categoria, subcategoria, medioPago, "Por pagar",
+          signedMonto, detalle, isoAVencimiento(iso2), n, cuotasTotal, mesPagoOpcion,
+        ]);
+        cuotasFuturasCreadas++;
+      }
+    }
 
     // RAW: la fecha se guarda tal cual la escribimos, sin reinterpretación de Sheets.
-    await window.SheetsApi.appendRow("Movimientos!A:N", row, "RAW");
-    showToast("Guardado ✓");
+    await window.SheetsApi.appendRows("Movimientos!A:N", rows, "RAW");
+    showToast(cuotasFuturasCreadas > 0 ? `Guardado ✓ (+ ${cuotasFuturasCreadas} cuota(s) futura(s))` : "Guardado ✓");
     resetFormForNextEntry();
     await loadOptions(); // refresh datalists in case a new category was typed
   } catch (err) {

@@ -122,6 +122,19 @@ async function appendRow(range, row, mode = "USER_ENTERED") {
   );
 }
 
+/** Appends varias filas al final de una sheet/tabla en UNA sola petición — más
+ * rápido que llamar appendRow varias veces seguidas (ej. al generar de una
+ * las cuotas futuras de una compra en cuotas). */
+async function appendRows(range, rows, mode = "USER_ENTERED") {
+  return sheetsFetch(
+    `/values/${encodeURIComponent(range)}:append?valueInputOption=${mode}&insertDataOption=INSERT_ROWS`,
+    {
+      method: "POST",
+      body: JSON.stringify({ values: rows }),
+    }
+  );
+}
+
 /** Overwrites many ranges in one request. `data` = [{range, values}, ...].
  * Necesario para marcar decenas de movimientos como pagados de una sola vez. */
 async function batchUpdateValues(data, mode = "RAW") {
@@ -152,4 +165,4 @@ function requireAuthOrRedirect() {
 }
 
 window.SheetsAuth = { getAccessToken, isLoggedIn, logout, requireAuthOrRedirect };
-window.SheetsApi = { readRange, appendRow, updateRange, batchUpdateValues };
+window.SheetsApi = { readRange, appendRow, appendRows, updateRange, batchUpdateValues };
