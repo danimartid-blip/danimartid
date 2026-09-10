@@ -544,30 +544,38 @@ function renderStats(selectedKey) {
   const totalCuentas = cuentas.reduce((s, c) => s + c.saldo, 0);
   const liquidez = totalCuentas - porPagarPronto;
 
+  // Patrimonio líquido: la otra mirada, la de "si hoy tuviera que pagar TODO
+  // lo que debo" — saldo menos el total de Por pagar sin filtrar por fecha.
+  // Es un número fijo de HOY, no depende del mes que estés mirando.
+  const patrimonioLiquido = totalCuentas - porPagar;
+  const statPl = $("statPatrimonioLiquido");
+  statPl.textContent = fmtCLP(patrimonioLiquido);
+  statPl.className = "stat-value stat-value-hero-sm " + (patrimonioLiquido >= 0 ? "income" : "expense");
+
   renderLiquidezPresupuestada(selectedKey, liquidez);
   renderConciliacion(selectedKey);
   renderPorPagarDetail(pendientes);
 }
 
 /** Protagonista: con cuánto terminarías si cumples el presupuesto del mes filtrado.
- * La liquidez real de hoy queda como dato secundario debajo. */
+ * La liquidez real de hoy queda como dato secundario debajo. Es la mirada de
+ * corto plazo (~40 días) — el total completo de deuda, sin filtrar por fecha,
+ * se muestra aparte como "Patrimonio líquido" (ver renderStats). */
 function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
   const grande = $("statLiquidezPpto");
   const linea = $("liquidezRealLine");
   const label = $("liquidezPptoLabel");
-  const help = $("liquidezHelp");
+  label.textContent = "Liquidez";
 
   const ingresoPpto = totalBudgetForTipo("Ingreso", selectedKey);
   const gastoPpto = totalBudgetForTipo("Gasto", selectedKey);
   const hayPpto = ingresoPpto !== 0 || gastoPpto !== 0;
 
   if (!hayPpto) {
-    label.textContent = "Liquidez neta real";
     grande.textContent = fmtCLP(liquidezReal);
     grande.className = "stat-value stat-value-hero " + (liquidezReal >= 0 ? "income" : "expense");
     linea.textContent = "Sin presupuesto para este mes";
     linea.style.color = "var(--text-muted)";
-    help.textContent = "Saldo en cuentas menos lo pendiente por pagar que vence pronto (próximos ~40 días). El total completo de deuda pendiente, sin importar cuándo vence, está en \"Por pagar (pendiente)\" más abajo.";
     return;
   }
 
@@ -577,12 +585,10 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
   // Un mes pasado no se puede "proyectar": la liquidez real de hoy ya incluye
   // todo lo que vino después. Mostramos la real y lo decimos.
   if (selectedKey < mesActual()) {
-    label.textContent = "Liquidez neta real";
     grande.textContent = fmtCLP(liquidezReal);
     grande.className = "stat-value stat-value-hero " + (liquidezReal >= 0 ? "income" : "expense");
     linea.innerHTML = `${nombreMes} ya pasó`;
     linea.style.color = "var(--text-muted)";
-    help.textContent = "La proyección solo aplica al mes en curso o a meses futuros. Este número es el saldo en cuentas menos lo \"Por pagar\" que vence pronto (próximos ~40 días).";
     return;
   }
 
@@ -598,13 +604,11 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
   const resultadoPpto = ingresoPpto - gastoPpto;
   const liquidezPpto = liquidezAntesDelMes + resultadoPpto;
 
-  label.textContent = `Liquidez proyectada · ${nombreMes}`;
   grande.textContent = fmtCLP(liquidezPpto);
   grande.className = "stat-value stat-value-hero " + (liquidezPpto >= 0 ? "income" : "expense");
 
-  linea.innerHTML = `Saldo actual: <strong>${fmtCLP(liquidezReal)}</strong>`;
+  linea.innerHTML = `${nombreMes} · saldo actual: <strong>${fmtCLP(liquidezReal)}</strong>`;
   linea.style.color = liquidezReal >= 0 ? "var(--good)" : "var(--critical)";
-  help.textContent = `Con cuánto cierras ${nombreMes} si cumples el presupuesto: al saldo actual (que ya descuenta lo "Por pagar" que vence pronto, próximos ~40 días — la deuda más lejana no pesa acá todavía) se le quita lo real del mes (${fmtCLP(realIngresos - realGastos)}) y se le aplica el neto presupuestado (${fmtCLP(resultadoPpto)}).`;
 }
 
 function renderPorPagarDetail(pendientes) {
@@ -1287,10 +1291,6 @@ async function init() {
     const detail = $("porPagarDetail");
     detail.hidden = !detail.hidden;
     $("porPagarToggle").textContent = detail.hidden ? "Ver detalle por banco/tarjeta ▾" : "Ocultar ▴";
-  });
-
-  $("liquidezInfoBtn").addEventListener("click", () => {
-    $("liquidezHelp").hidden = !$("liquidezHelp").hidden;
   });
 }
 

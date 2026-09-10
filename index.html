@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202609102052">
+<link rel="stylesheet" href="css/styles.css?v=202609102058">
 </head>
 <body>
 
@@ -23,13 +23,15 @@
 
   <div id="dashboard" hidden>
     <div class="card card-hero">
-      <div class="hero-label-row">
-        <div class="stat-label" id="liquidezPptoLabel">Liquidez proyectada</div>
-        <button type="button" class="info-btn" id="liquidezInfoBtn" aria-label="Más información">?</button>
-      </div>
+      <div class="stat-label" id="liquidezPptoLabel">Liquidez</div>
       <div class="stat-value stat-value-hero" id="statLiquidezPpto">$0</div>
       <div id="liquidezRealLine"></div>
-      <p style="font-size:12px;color:var(--text-muted);margin:10px 0 0;line-height:1.5;" id="liquidezHelp" hidden></p>
+
+      <div class="hero-divider"></div>
+
+      <div class="stat-label">Patrimonio líquido</div>
+      <div class="stat-value stat-value-hero-sm" id="statPatrimonioLiquido">$0</div>
+      <div class="hero-sub-line">Saldo en cuentas menos TODO lo por pagar, venza cuando venza</div>
     </div>
 
     <div class="card">
@@ -95,9 +97,9 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202609102052"></script>
+<script src="js/config.js?v=202609102058"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202609102052"></script>
-<script src="js/dashboard.js?v=202609102052"></script>
+<script src="js/sheets-auth.js?v=202609102058"></script>
+<script src="js/dashboard.js?v=202609102058"></script>
 </body>
 </html>
