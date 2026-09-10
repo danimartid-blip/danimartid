@@ -7,27 +7,6 @@ function fmtCLP(n) {
   return sign + "$" + Math.round(Math.abs(n)).toLocaleString("es-CL");
 }
 
-/** Paleta de colores por categoría — evita rojos/naranjos (esos quedan
- * reservados para "excedido"). Cada categoría siempre saca el mismo color
- * (hash estable de su nombre), para que el puntito junto al nombre y el fondo
- * de su detalle al abrirla sean siempre el mismo, sesión tras sesión. */
-const CATEGORY_PALETTE = [
-  "#4f8fdb", // azul
-  "#9575cd", // púrpura
-  "#26a69a", // verde azulado
-  "#d16ba5", // rosa
-  "#c9a227", // dorado
-  "#4fb3bf", // cian
-  "#7986cb", // índigo
-  "#7cb342", // verde oliva
-  "#b0708a", // rosa viejo
-  "#5f9ea0", // cadete
-];
-function colorForCategoria(nombre) {
-  let hash = 0;
-  for (let i = 0; i < nombre.length; i++) hash = (hash * 31 + nombre.charCodeAt(i)) >>> 0;
-  return CATEGORY_PALETTE[hash % CATEGORY_PALETTE.length];
-}
 
 let movimientos = []; // { fecha, año, mes, tipo, categoria, subcategoria, medioPago, estado, monto, detalle }
 let presupuestoRows = []; // { mes, tipo, categoria, subcategoria, monto }
@@ -494,7 +473,6 @@ function renderStats(selectedKey) {
     const pct = hasMeta ? Math.round((monto / meta) * 100) : null;
     const row = document.createElement("div");
     row.className = "category-row";
-    row.style.setProperty("--cat-color", colorForCategoria(cat));
 
     const sparkline = buildTrendLineHTML(
       monthsBackFrom(selectedKey, 6),
@@ -1286,6 +1264,10 @@ async function init() {
     const detail = $("porPagarDetail");
     detail.hidden = !detail.hidden;
     $("porPagarToggle").textContent = detail.hidden ? "Ver detalle por banco/tarjeta ▾" : "Ocultar ▴";
+  });
+
+  $("liquidezInfoBtn").addEventListener("click", () => {
+    $("liquidezHelp").hidden = !$("liquidezHelp").hidden;
   });
 }
 

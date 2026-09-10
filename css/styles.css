@@ -190,6 +190,37 @@ header.topbar h1 {
 .income { color: var(--income); }
 .expense { color: var(--expense); }
 
+/* etiqueta del hero + botón "?" que despliega la explicación, oculta por
+ * defecto — la idea es que la card se vea limpia (mes, monto, saldo) y la
+ * explicación quede ahí solo para quien la pida. */
+.hero-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.hero-label-row .stat-label { margin-bottom: 0; }
+.info-btn {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--text-muted);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.info-btn:active { background: var(--surface-2); }
+
 /* hero (liquidez neta) */
 .card-hero {
   text-align: center;
@@ -243,7 +274,8 @@ header.topbar h1 {
 /* ---------- filas categoría / subcategoría ---------- */
 
 .category-row {
-  --cat-color: var(--accent);
+  /* un solo color para todas las categorías (antes variaba por categoría) */
+  --cat-color: #9575cd;
   padding: 12px 0;
   border-bottom: 1px solid var(--grid);
 }
