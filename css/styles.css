@@ -333,8 +333,14 @@ header.topbar h1 {
   transition: width .5s var(--ease);
 }
 .bar-fill.over { background: linear-gradient(90deg, var(--serious), var(--critical)); }
-/* misma barra pero más fina, para las filas de subcategoría (más apretadas) */
+/* misma barra pero más fina, para las filas de subcategoría (más apretadas).
+ * Usa el mismo celeste (--series-1) del gráfico de línea de la categoría en
+ * vez del verde-azulado de la barra principal, para diferenciarlas — el rojo
+ * de excedido (.over) se mantiene igual en ambos niveles. */
 .bar-track-sub { height: 4px; margin-top: 6px; }
+.bar-track-sub .bar-fill:not(.over) {
+  background: linear-gradient(90deg, var(--series-1) 0%, color-mix(in srgb, var(--series-1) 70%, white) 100%);
+}
 
 /* Línea de tendencia compacta (nivel CATEGORÍA) — área + línea, más chica que
  * el "Tendencia" grande de arriba del dashboard, distinta a propósito de las
