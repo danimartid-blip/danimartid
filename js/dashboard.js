@@ -517,9 +517,32 @@ function renderStats(selectedKey) {
   const porPagar = -pendientes.reduce((s, m) => s + m.monto, 0);
   $("statPorPagar").textContent = fmtCLP(porPagar);
 
-  // Liquidez neta real = saldo en cuentas - lo pendiente por pagar
+  // Liquidez ("¿cuánto tengo de verdad disponible AHORA?") solo descuenta lo
+  // que vence pronto (próximos ~40 días) — una cuota futura (ej. la 2 de 3,
+  // que vence dentro de 2 ciclos) ya se ve reflejada en su propio mes en
+  // Presupuesto/Dashboard, pero no debe bajar la liquidez de HOY solo porque
+  // ya quedó registrada de antemano. "Por pagar (pendiente)" arriba sí sigue
+  // mostrando el total completo, para tener la foto entera de la deuda.
+  //
+  // OJO: NO alcanza con "vence este mes calendario" — casi todo lo comprado
+  // a crédito este mes vence recién el mes que viene (el ciclo de
+  // facturación), así que ese corte dejaba afuera prácticamente todo el
+  // "por pagar" normal, no solo las cuotas futuras. Por eso se usa una
+  // ventana rodante de días desde hoy: cubre "el próximo estado de cuenta"
+  // sin importar en qué día del mes esté parado, y sigue excluyendo un
+  // vencimiento 2 ciclos más allá.
+  const hoy = new Date();
+  const cutoffPronto = new Date(hoy);
+  cutoffPronto.setDate(cutoffPronto.getDate() + 40);
+  const pendientesPronto = pendientes.filter((m) => {
+    const d = parseFechaVenc(m.fechaVencimiento);
+    if (!d) return true; // sin fecha registrada: más seguro tratarlo como ya exigible
+    return d <= cutoffPronto;
+  });
+  const porPagarPronto = -pendientesPronto.reduce((s, m) => s + m.monto, 0);
+
   const totalCuentas = cuentas.reduce((s, c) => s + c.saldo, 0);
-  const liquidez = totalCuentas - porPagar;
+  const liquidez = totalCuentas - porPagarPronto;
 
   renderLiquidezPresupuestada(selectedKey, liquidez);
   renderConciliacion(selectedKey);
