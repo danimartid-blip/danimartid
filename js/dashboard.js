@@ -309,7 +309,60 @@ function monthlyTotals(categoria, subSentinel) {
   return out;
 }
 
-/** Small 6-bar sparkline (with month labels) as an HTML string. */
+/** Línea de tendencia compacta (área + línea) para el nivel de CATEGORÍA — el
+ * resumen "cómo se movió esto en general" al pinchar una categoría. Distinta
+ * a propósito de las mini-barras de subcategoría (buildSparklineHTML): al ser
+ * una línea, se reconoce de un vistazo cuál gráfico es "el principal" cuando
+ * hay uno anidado adentro del otro. */
+function buildTrendLineHTML(sixMonths, totalsByMonth) {
+  const vals = sixMonths.map((k) => totalsByMonth[k] || 0);
+  const max = Math.max(...vals, 0);
+  const min = Math.min(...vals, 0);
+  const range = max - min || 1;
+  const w = 300;
+  const h = 46;
+  const padX = 3;
+  const padY = 6;
+  const stepX = (w - padX * 2) / (sixMonths.length - 1 || 1);
+  const pts = vals.map((v, i) => [padX + stepX * i, padY + (h - padY * 2) * (1 - (v - min) / range)]);
+  const fmt = (n) => n.toFixed(1);
+  const lineD = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${fmt(x)},${fmt(y)}`).join(" ");
+  const areaD = `${lineD} L${fmt(pts[pts.length - 1][0])},${h - padY} L${fmt(pts[0][0])},${h - padY} Z`;
+  const gradId = `tlg${Math.random().toString(36).slice(2, 9)}`;
+  const dots = pts
+    .map(([x, y], i) => {
+      const isLast = i === pts.length - 1;
+      return `<circle cx="${fmt(x)}" cy="${fmt(y)}" r="${isLast ? 3.2 : 2}" fill="var(--series-1)" ${isLast ? "" : 'opacity=".5"'}><title>${MESES[Number(sixMonths[i].split("-")[1])]}: ${fmtCLP(vals[i])}</title></circle>`;
+    })
+    .join("");
+  const labels = sixMonths
+    .map((k, i) => {
+      const [, mo] = k.split("-");
+      const isLast = i === sixMonths.length - 1;
+      return `<div class="trend-line-label${isLast ? " active" : ""}">${MESES[Number(mo)]}</div>`;
+    })
+    .join("");
+  return `
+    <div class="trend-line-wrap">
+      <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--series-1)" stop-opacity=".32"/>
+            <stop offset="100%" stop-color="var(--series-1)" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="${areaD}" fill="url(#${gradId})" stroke="none"/>
+        <path d="${lineD}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        ${dots}
+      </svg>
+      <div class="trend-line-labels">${labels}</div>
+    </div>`;
+}
+
+/** Mini-barras de 6 meses (con etiquetas), MÁS CHICAS que el gráfico de línea de
+ * categoría — para el nivel de SUBCATEGORÍA anidado adentro de una categoría ya
+ * abierta. El estilo "nested" (más chico, con acento a la izquierda) las separa
+ * visualmente del gráfico principal para que no se vea todo apilado igual. */
 function buildSparklineHTML(sixMonths, totalsByMonth) {
   const vals = sixMonths.map((k) => totalsByMonth[k] || 0);
   const max = Math.max(...vals, 1);
@@ -323,7 +376,7 @@ function buildSparklineHTML(sixMonths, totalsByMonth) {
       </div>`;
     })
     .join("");
-  return `<div class="spark">${cols}</div>`;
+  return `<div class="spark spark-nested">${cols}</div>`;
 }
 
 const escapeAttr = (s) => String(s).replace(/"/g, "&quot;");
@@ -423,7 +476,7 @@ function renderStats(selectedKey) {
     const row = document.createElement("div");
     row.className = "category-row";
 
-    const sparkline = buildSparklineHTML(
+    const sparkline = buildTrendLineHTML(
       monthsBackFrom(selectedKey, 6),
       monthlyTotals(cat)
     );

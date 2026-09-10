@@ -334,22 +334,39 @@ header.topbar h1 {
 }
 .bar-fill.over { background: linear-gradient(90deg, var(--serious), var(--critical)); }
 
-/* mini-barras (sparkline de 3 / 6 meses) */
+/* Línea de tendencia compacta (nivel CATEGORÍA) — área + línea, más chica que
+ * el "Tendencia" grande de arriba del dashboard, distinta a propósito de las
+ * mini-barras de subcategoría para que se note cuál es el gráfico "principal". */
+.trend-line-wrap { margin: 0; }
+.trend-line-labels { display: flex; margin-top: 3px; }
+.trend-line-label { flex: 1; text-align: center; font-size: 9px; color: var(--text-muted); font-weight: 650; letter-spacing: .03em; }
+.trend-line-label.active { color: var(--series-1); }
+
+/* mini-barras (sparkline de 6 meses), nivel SUBCATEGORÍA anidado dentro de una
+ * categoría — chicas y con acento a la izquierda a propósito, para separarlas
+ * visualmente del gráfico de línea de la categoría que las contiene. */
 .spark {
   display: flex;
-  gap: 5px;
+  gap: 4px;
   align-items: flex-end;
 }
-.spark-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; }
-.spark-bar-slot { width: 100%; height: 38px; display: flex; align-items: flex-end; }
+.spark-nested {
+  padding: 8px 8px 2px 10px;
+  margin: 2px 0 0;
+  border-left: 2px solid var(--grid);
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+  border-radius: 0 10px 10px 0;
+}
+.spark-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.spark-bar-slot { width: 100%; height: 22px; display: flex; align-items: flex-end; }
 .spark-bar {
   width: 100%;
-  border-radius: 4px 4px 2px 2px;
+  border-radius: 3px 3px 1px 1px;
   background: color-mix(in srgb, var(--series-1) 32%, transparent);
   transition: height .4s var(--ease);
 }
 .spark-col:last-child .spark-bar { background: var(--series-1); }
-.spark-label { font-size: 9.5px; color: var(--text-muted); font-weight: 650; letter-spacing: .03em; }
+.spark-label { font-size: 8.5px; color: var(--text-muted); font-weight: 650; letter-spacing: .03em; }
 
 /* fila de 4 números (promedio + 3 meses) en Presupuesto */
 .stats-row {
