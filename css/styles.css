@@ -298,6 +298,21 @@ header.topbar h1 {
 }
 .category-row-top .cat-amounts .meta { color: var(--text-muted); font-weight: 500; }
 
+/* basurero para borrar un monto fijado (Presupuesto) directo desde la fila,
+ * sin tener que abrirla primero */
+.row-trash-btn {
+  background: none;
+  border: none;
+  padding: 3px;
+  margin: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  opacity: .6;
+  -webkit-tap-highlight-color: transparent;
+}
+.row-trash-btn:active { opacity: 1; color: var(--serious); }
+
 .cat-clickable {
   cursor: pointer;
   border-radius: var(--radius-sm);
@@ -419,32 +434,6 @@ header.topbar h1 {
 }
 .spark-col:last-child .spark-bar { background: var(--series-1); }
 .spark-label { font-size: 8.5px; color: var(--text-muted); font-weight: 650; letter-spacing: .03em; }
-
-/* fila de 4 números (promedio + 3 meses) en Presupuesto */
-.stats-row {
-  display: flex;
-  gap: 6px;
-  margin-top: 10px;
-  padding: 9px 4px 2px;
-  border-top: 1px solid var(--grid);
-}
-.stats-cell { flex: 1; text-align: center; }
-.stats-cell.is-primary { flex: 1.35; }
-.stats-cell .v {
-  font-size: 11.5px;
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-.stats-cell.is-primary .v { font-size: 14px; font-weight: 750; color: var(--text); letter-spacing: -0.015em; }
-.stats-cell .k { font-size: 9.5px; color: var(--text-muted); font-weight: 650; margin-top: 2px; }
-.stats-cell .minibar { height: 15px; display: flex; align-items: flex-end; margin: 5px 4px 3px; }
-.stats-cell .minibar i {
-  display: block; width: 100%;
-  border-radius: 3px 3px 1px 1px;
-  background: color-mix(in srgb, var(--series-1) 28%, transparent);
-  transition: height .4s var(--ease);
-}
-.stats-cell:last-child .minibar i { background: color-mix(in srgb, var(--series-1) 65%, transparent); }
 
 /* ---------- leyenda ---------- */
 

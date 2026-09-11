@@ -225,24 +225,70 @@ function categoriasFor(tipo, mes, historyMonths) {
   });
 }
 
-function buildStatsRow(promedio, historyTotals, historyMonths) {
-  const max = Math.max(...historyTotals, 1);
-  const cells = [
-    `<div class="stats-cell is-primary">
-      <div class="v">${fmtCLP(promedio)}</div>
-      <div class="k">Prom. 3m</div>
-    </div>`,
-    ...historyTotals.map((v, i) => {
-      const [, mo] = historyMonths[i].split("-");
-      const pct = Math.max(3, Math.round((v / max) * 100));
-      return `<div class="stats-cell">
-        <div class="v">${fmtCLP(v)}</div>
-        <div class="minibar"><i style="height:${pct}%"></i></div>
-        <div class="k">${MESES[Number(mo)]}</div>
+/** Los 3 meses de historia + el mes actual, como etiquetas cortas de mes —
+ * mismo orden que historyTotals/effective en subInfo. */
+function monthLabelsFor(historyMonths, mes) {
+  return [...historyMonths, mes].map((mk) => MESES[Number(mk.split("-")[1])]);
+}
+
+/** Línea de tendencia compacta (área + línea) — mismo estilo que el Dashboard,
+ * para el nivel de CATEGORÍA. Se grafican los 3 meses de historia + el mes
+ * actual con su valor EFECTIVO (fijado o promedio) — acá se está mirando el
+ * presupuesto en sí, no el gasto real. */
+function buildTrendLineHTML(labels, values) {
+  const max = Math.max(...values, 0);
+  const min = Math.min(...values, 0);
+  const range = max - min || 1;
+  const w = 300;
+  const h = 46;
+  const padX = 3;
+  const padY = 6;
+  const stepX = (w - padX * 2) / (labels.length - 1 || 1);
+  const pts = values.map((v, i) => [padX + stepX * i, padY + (h - padY * 2) * (1 - (v - min) / range)]);
+  const fmt = (n) => n.toFixed(1);
+  const lineD = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${fmt(x)},${fmt(y)}`).join(" ");
+  const areaD = `${lineD} L${fmt(pts[pts.length - 1][0])},${h - padY} L${fmt(pts[0][0])},${h - padY} Z`;
+  const gradId = `tlg${Math.random().toString(36).slice(2, 9)}`;
+  const dots = pts
+    .map(([x, y], i) => {
+      const isLast = i === pts.length - 1;
+      return `<circle cx="${fmt(x)}" cy="${fmt(y)}" r="${isLast ? 3.2 : 2}" fill="var(--series-1)" ${isLast ? "" : 'opacity=".5"'}><title>${labels[i]}: ${fmtCLP(values[i])}</title></circle>`;
+    })
+    .join("");
+  const labelsHtml = labels
+    .map((l, i) => `<div class="trend-line-label${i === labels.length - 1 ? " active" : ""}">${l}</div>`)
+    .join("");
+  return `
+    <div class="trend-line-wrap">
+      <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--series-1)" stop-opacity=".32"/>
+            <stop offset="100%" stop-color="var(--series-1)" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="${areaD}" fill="url(#${gradId})" stroke="none"/>
+        <path d="${lineD}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        ${dots}
+      </svg>
+      <div class="trend-line-labels">${labelsHtml}</div>
+    </div>`;
+}
+
+/** Mini-barras chicas (mismo estilo "nested" que el Dashboard) — nivel
+ * SUBCATEGORÍA anidado dentro de una categoría ya abierta. */
+function buildNestedBarsHTML(labels, values) {
+  const max = Math.max(...values, 1);
+  const cols = values
+    .map((v, i) => {
+      const heightPct = Math.max(3, Math.round((v / max) * 100));
+      return `<div class="spark-col" title="${labels[i]}: ${fmtCLP(v)}">
+        <div class="spark-bar-slot"><div class="spark-bar" style="height:${heightPct}%"></div></div>
+        <div class="spark-label">${labels[i]}</div>
       </div>`;
-    }),
-  ];
-  return `<div class="stats-row">${cells.join("")}</div>`;
+    })
+    .join("");
+  return `<div class="spark spark-nested">${cols}</div>`;
 }
 
 const escapeAttr = (s) => String(s ?? "").replace(/"/g, "&quot;");
@@ -276,7 +322,7 @@ function buildCategoriaBlock(tipo, categoria, mes, historyMonths) {
 
   const subHtml = contables
     .sort((a, b) => b.effective - a.effective)
-    .map((si) => buildSubcategoriaRow(si, historyMonths, tipo, categoria))
+    .map((si) => buildSubcategoriaRow(si, historyMonths, tipo, categoria, mes))
     .join("");
 
   const wrap = document.createElement("div");
@@ -286,9 +332,9 @@ function buildCategoriaBlock(tipo, categoria, mes, historyMonths) {
       <span class="cat-name">${categoria}</span>
       <span class="cat-amounts">${fmtCLP(catPromedio)}</span>
     </div>
-    ${buildStatsRow(catPromedio, catHistory, historyMonths)}
-    <div class="sub-detail${catOpen ? " no-anim" : ""}" id="${catId}" ${catOpen ? "" : "hidden"} style="margin-top:10px;">
-      ${subHtml}
+    <div class="cat-detail${catOpen ? " no-anim" : ""}" id="${catId}" ${catOpen ? "" : "hidden"}>
+      ${buildTrendLineHTML(monthLabelsFor(historyMonths, mes), [...catHistory, catPromedio])}
+      <div style="margin-top:10px;">${subHtml}</div>
       <div class="add-sub">
         <button type="button" class="btn-link add-sub-toggle">+ Agregar subcategoría</button>
         <div class="add-sub-form" hidden>
@@ -330,34 +376,39 @@ function buildCategoriaBlock(tipo, categoria, mes, historyMonths) {
   });
 
   wireSubcategoriaToggles(wrap, tipo, categoria, mes, historyMonths);
+
+  wrap.querySelectorAll(".row-trash-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation(); // no abrir/cerrar la fila al pinchar el basurero
+      if (confirm("¿Eliminar este monto fijado? Vuelve a usarse el promedio sugerido.")) {
+        await deleteRow(Number(btn.dataset.trashRow));
+      }
+    });
+  });
+
   return wrap;
 }
 
-function buildSubcategoriaRow(si, historyMonths, tipo, categoria) {
+function buildSubcategoriaRow(si, historyMonths, tipo, categoria, mes) {
   const label = si.sub || "General";
   const subId = `sub${++uid}`;
   const isOpen = openSubs.has(subKeyOf(tipo, categoria, si.sub));
   const etiqueta = si.esReembolso
     ? '<span class="badge badge-muted" style="font-size:10px;">no suma — ya restado del gasto</span>'
     : si.row ? "" : ' <span class="meta" style="font-size:10px;">(sugerido)</span>';
-  // Apertura: si este Gasto tiene un reembolso pareado, se muestra el gasto
-  // bruto y el reembolso por separado en la misma línea, en vez de solo el
-  // neto — más un aviso de si el reembolso de ESTE mes ya llegó o no.
-  const reembolsoHtml = si.reembolso
-    ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;color:var(--text-muted);padding:0 0 8px;">
-        <span>Gasto ${fmtCLP(si.reembolso.brutoAvg)} · Reembolso −${fmtCLP(si.reembolso.montoAvg)} <span style="opacity:.75;">(${escapeAttr(si.reembolso.label)})</span></span>
-        <span class="badge ${si.reembolso.recibidoEsteMes ? "badge-good" : "badge-muted"}" style="font-size:10px;white-space:nowrap;">
-          ${si.reembolso.recibidoEsteMes ? "✓ recibido este mes" : "⏳ pendiente este mes"}
-        </span>
-      </div>`
+  // Basurero: solo si hay un monto FIJADO por vos este mes (si.row) — no hay
+  // nada que "borrar" en una línea sugerida, esa sale sola del promedio.
+  const trashBtn = si.row && !si.esReembolso
+    ? `<button type="button" class="row-trash-btn" data-trash-row="${si.row}" title="Eliminar este monto fijado (vuelve al promedio)" aria-label="Eliminar monto fijado">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+      </button>`
     : "";
   return `
     <div class="category-row-top cat-clickable sub-clickable" data-sub="${escapeAttr(si.sub)}" data-target="${subId}" style="padding:8px 0;font-size:13px;${si.esReembolso ? "opacity:.6;" : ""}">
       <span style="color:var(--text-secondary)">${label}${etiqueta}</span>
-      <span class="cat-amounts">${fmtCLP(si.effective)}</span>
+      <span class="cat-amounts" style="display:inline-flex;align-items:center;gap:7px;">${trashBtn}${fmtCLP(si.effective)}</span>
     </div>
-    ${reembolsoHtml}
-    ${buildStatsRow(si.effective, si.historyTotals, historyMonths)}
+    ${buildNestedBarsHTML(monthLabelsFor(historyMonths, mes), [...si.historyTotals, si.effective])}
     <div class="sub-detail${isOpen ? " no-anim" : ""}" id="${subId}" ${isOpen ? "" : "hidden"}></div>`;
 }
 
