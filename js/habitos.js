@@ -9,6 +9,18 @@ function fmtCLP(n) {
   return sign + "$" + Math.round(Math.abs(n)).toLocaleString("es-CL");
 }
 
+/** Los totales del período acumulan varios meses y llegan a 8 dígitos, que no
+ * caben en el cuadrito. Se abrevian a millones / miles; el monto exacto queda
+ * en el title del elemento para quien quiera el detalle. */
+function fmtCorto(n) {
+  const abs = Math.abs(n);
+  if (abs < 1e5) return fmtCLP(n); // hasta 6 dígitos entra completo
+  const sign = n < 0 ? "-" : "";
+  const miles = Math.round(abs / 1000);
+  if (miles < 1000) return `${sign}$${miles} mil`;
+  return `${sign}$${(abs / 1e6).toFixed(1).replace(".", ",")}M`;
+}
+
 let movimientos = [];
 let periodoMeses = 6;
 
@@ -182,8 +194,11 @@ function render() {
   const reembolsoTotal = subs.reduce((s, e) => s + e.reembolso, 0);
   const dias = diasDelPeriodo(meses);
 
-  Anim.numero($("statGasto"), gastoTotal, fmtCLP);
-  Anim.numero($("statIngreso"), ingresoTotal - reembolsoTotal, fmtCLP);
+  const ingresoNeto = ingresoTotal - reembolsoTotal;
+  Anim.numero($("statGasto"), gastoTotal, fmtCorto);
+  Anim.numero($("statIngreso"), ingresoNeto, fmtCorto);
+  $("statGasto").title = fmtCLP(gastoTotal);
+  $("statIngreso").title = fmtCLP(ingresoNeto);
   Anim.numero($("statPromedioDia"), gastoTotal / dias, fmtCLP);
   $("promedioDetalle").textContent = `por día · ${dias} días · ${meses.length} ${meses.length === 1 ? "mes" : "meses"}`;
 
