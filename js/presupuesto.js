@@ -275,23 +275,6 @@ function buildTrendLineHTML(labels, values) {
     </div>`;
 }
 
-/** Fila de números (sin gráfico) — nivel SUBCATEGORÍA. Para decidir un
- * presupuesto importa más ver el monto exacto de cada mes anterior que una
- * forma de barra; el gráfico de línea queda reservado para la categoría. El
- * último (mes actual) va destacado — es el promedio/fijado vigente. */
-function buildStatsRow(labels, values) {
-  const cells = values
-    .map((v, i) => {
-      const isCurrent = i === values.length - 1;
-      return `<div class="stats-cell${isCurrent ? " is-primary" : ""}">
-        <div class="v">${fmtCLP(v)}</div>
-        <div class="k">${labels[i]}</div>
-      </div>`;
-    })
-    .join("");
-  return `<div class="stats-row">${cells}</div>`;
-}
-
 const escapeAttr = (s) => String(s ?? "").replace(/"/g, "&quot;");
 
 /** Contador global: los ids del DOM deben ser únicos, si no getElementById
@@ -404,12 +387,33 @@ function buildSubcategoriaRow(si, historyMonths, tipo, categoria, mes) {
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
       </button>`
     : "";
+
+  // El monto ya no se repite arriba de la fila — vive UNA sola vez, en la
+  // última celda (el mes actual) de la fila de números de abajo. Esa celda es
+  // la que se pincha para editar (antes se pinchaba la fila de arriba, que ya
+  // no tiene nada que mostrar aparte del nombre).
+  const labels = monthLabelsFor(historyMonths, mes);
+  const values = [...si.historyTotals, si.effective];
+  const cells = values
+    .map((v, i) => {
+      if (i < values.length - 1) {
+        return `<div class="stats-cell">
+          <div class="v">${fmtCLP(v)}</div>
+          <div class="k">${labels[i]}</div>
+        </div>`;
+      }
+      return `<div class="stats-cell is-primary sub-clickable" data-sub="${escapeAttr(si.sub)}" data-target="${subId}">
+        <div class="v" style="display:inline-flex;align-items:center;gap:6px;">${trashBtn}${fmtCLP(v)}</div>
+        <div class="k">${labels[i]}</div>
+      </div>`;
+    })
+    .join("");
+
   return `
-    <div class="category-row-top cat-clickable sub-clickable" data-sub="${escapeAttr(si.sub)}" data-target="${subId}" style="padding:8px 0;font-size:13px;${si.esReembolso ? "opacity:.6;" : ""}">
+    <div class="category-row-top" style="padding:8px 0 0;font-size:13px;${si.esReembolso ? "opacity:.6;" : ""}">
       <span style="color:var(--text-secondary)">${label}${etiqueta}</span>
-      <span class="cat-amounts" style="display:inline-flex;align-items:center;gap:7px;">${trashBtn}${fmtCLP(si.effective)}</span>
     </div>
-    ${buildStatsRow(monthLabelsFor(historyMonths, mes), [...si.historyTotals, si.effective])}
+    <div class="stats-row">${cells}</div>
     <div class="sub-detail${isOpen ? " no-anim" : ""}" id="${subId}" ${isOpen ? "" : "hidden"}></div>`;
 }
 

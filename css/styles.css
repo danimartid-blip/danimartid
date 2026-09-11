@@ -453,6 +453,16 @@ header.topbar h1 {
 }
 .stats-cell.is-primary .v { font-size: 14px; font-weight: 750; color: var(--text); letter-spacing: -0.015em; }
 .stats-cell .k { font-size: 9.5px; color: var(--text-muted); font-weight: 650; margin-top: 2px; }
+/* la celda del mes actual es la que se pincha para editar el presupuesto */
+.stats-cell.is-primary.sub-clickable {
+  cursor: pointer;
+  border-radius: 10px;
+  margin: -4px -2px;
+  padding: 4px 2px;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .15s var(--ease);
+}
+.stats-cell.is-primary.sub-clickable:active { background: var(--surface-2); }
 
 /* ---------- leyenda ---------- */
 
