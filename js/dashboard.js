@@ -111,20 +111,27 @@ function reembolsoInfoFor(categoria, subcategoria, mes) {
  * si se especifica) ese mes, se descuenta — es tu propia convención para marcar
  * "esto me lo van a devolver" (ej. el café de Starbucks que te reembolsan
  * queda anotado también como Trabajo/Starbuck). subcategoria === undefined =>
- * toda la categoría junta. Un Ingreso nunca se neta contra gastos — solo aplica
- * cuando se pide el Gasto. Si la categoría es "de a par" (singleBucket en ambos
- * lados, ver arriba) también se descuenta el Ingreso aunque use otra etiqueta. */
+ * toda la categoría junta (suma de cada subcategoría de Gasto presente ese
+ * mes, cada una neta de SU propio reembolso validado — nunca "todo el Ingreso
+ * de la categoría resta del Gasto" sin más: eso rompía con categorías como
+ * Sueldo, donde el sueldo real de un mes sin ningún Gasto quedaba restando y
+ * daba un "gasto" negativo absurdo). Un Ingreso nunca se neta contra gastos —
+ * solo aplica cuando se pide el Gasto. */
 function montoRealNeto(tipo, categoria, mes, subcategoria, anchorMes = mes) {
   if (tipo === "Gasto" && subcategoria !== undefined) return gastoMonthlyBreakdown(categoria, subcategoria, mes, anchorMes).neto;
-  let total = 0;
-  let reembolso = 0;
-  for (const m of movimientos) {
-    if (m.categoria !== categoria || monthKey(m) !== mes) continue;
-    if (subcategoria !== undefined && normSub(m.subcategoria) !== normSub(subcategoria)) continue;
-    if (m.tipo === tipo) total += Math.abs(m.monto);
-    else if (tipo === "Gasto" && m.tipo === "Ingreso") reembolso += m.monto;
+  if (tipo === "Gasto") {
+    const gastoSubs = new Set();
+    for (const m of movimientos) if (m.tipo === "Gasto" && m.categoria === categoria && monthKey(m) === mes) gastoSubs.add(m.subcategoria || "");
+    let total = 0;
+    for (const sub of gastoSubs) total += gastoMonthlyBreakdown(categoria, sub, mes, anchorMes).neto;
+    return total;
   }
-  return total - reembolso;
+  // Ingreso, categoría entera: sin neteo (un Ingreso nunca se neta contra Ingresos).
+  let total = 0;
+  for (const m of movimientos) {
+    if (m.categoria === categoria && monthKey(m) === mes && m.tipo === tipo) total += Math.abs(m.monto);
+  }
+  return total;
 }
 
 /** anchorMes: mismo motivo que en gastoMonthlyBreakdown — la ventana que decide
@@ -1142,15 +1149,31 @@ function renderConciliacion(selectedKey) {
 
 }
 
+/** Gastos e ingresos REALES por mes, netos de reembolso — mismo criterio que
+ * el resto del dashboard ("Gasto por categoría"), en vez de sumar todo el
+ * Ingreso y todo el Gasto por separado (eso duplicaba cualquier reembolso: el
+ * Gasto bruto de un lado, el Ingreso completo también del otro). Se excluyen
+ * los meses futuros (cuotas ya cargadas de antemano) — la tendencia es de lo
+ * que YA pasó, no de lo que está agendado para más adelante. */
 function renderTrend() {
+  const hoy = mesActual();
+  const allMonths = [...new Set(movimientos.map(monthKey))].filter((k) => k <= hoy).sort().slice(-9);
+  const allCats = [...new Set(movimientos.filter((m) => allMonths.includes(monthKey(m))).map((m) => m.categoria))];
+
   const byMonth = {};
+  for (const key of allMonths) byMonth[key] = { ingresos: 0, gastos: 0 };
+  for (const cat of allCats) for (const key of allMonths) byMonth[key].gastos += montoRealNeto("Gasto", cat, key);
   for (const m of movimientos) {
+    if (m.tipo !== "Ingreso") continue;
     const key = monthKey(m);
-    byMonth[key] ||= { ingresos: 0, gastos: 0 };
-    if (m.tipo === "Ingreso") byMonth[key].ingresos += m.monto;
-    else byMonth[key].gastos += Math.abs(m.monto);
+    if (!byMonth[key]) continue;
+    // Un Ingreso que ya se restó como reembolso del lado del Gasto (arriba) no
+    // se vuelve a sumar acá — se contaría dos veces.
+    const mesesRelevantes = [...monthsBeforeExclusive(key, 3), key];
+    if (!esReembolsoDeGasto(m.categoria, m.subcategoria || "", mesesRelevantes)) byMonth[key].ingresos += Math.abs(m.monto);
   }
-  const keys = Object.keys(byMonth).sort().slice(-9);
+
+  const keys = allMonths;
   const svg = $("trendChart");
   const tooltip = $("trendTooltip");
   if (keys.length < 2) {
