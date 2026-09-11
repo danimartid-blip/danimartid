@@ -275,20 +275,21 @@ function buildTrendLineHTML(labels, values) {
     </div>`;
 }
 
-/** Mini-barras chicas (mismo estilo "nested" que el Dashboard) — nivel
- * SUBCATEGORÍA anidado dentro de una categoría ya abierta. */
-function buildNestedBarsHTML(labels, values) {
-  const max = Math.max(...values, 1);
-  const cols = values
+/** Fila de números (sin gráfico) — nivel SUBCATEGORÍA. Para decidir un
+ * presupuesto importa más ver el monto exacto de cada mes anterior que una
+ * forma de barra; el gráfico de línea queda reservado para la categoría. El
+ * último (mes actual) va destacado — es el promedio/fijado vigente. */
+function buildStatsRow(labels, values) {
+  const cells = values
     .map((v, i) => {
-      const heightPct = Math.max(3, Math.round((v / max) * 100));
-      return `<div class="spark-col" title="${labels[i]}: ${fmtCLP(v)}">
-        <div class="spark-bar-slot"><div class="spark-bar" style="height:${heightPct}%"></div></div>
-        <div class="spark-label">${labels[i]}</div>
+      const isCurrent = i === values.length - 1;
+      return `<div class="stats-cell${isCurrent ? " is-primary" : ""}">
+        <div class="v">${fmtCLP(v)}</div>
+        <div class="k">${labels[i]}</div>
       </div>`;
     })
     .join("");
-  return `<div class="spark spark-nested">${cols}</div>`;
+  return `<div class="stats-row">${cells}</div>`;
 }
 
 const escapeAttr = (s) => String(s ?? "").replace(/"/g, "&quot;");
@@ -408,7 +409,7 @@ function buildSubcategoriaRow(si, historyMonths, tipo, categoria, mes) {
       <span style="color:var(--text-secondary)">${label}${etiqueta}</span>
       <span class="cat-amounts" style="display:inline-flex;align-items:center;gap:7px;">${trashBtn}${fmtCLP(si.effective)}</span>
     </div>
-    ${buildNestedBarsHTML(monthLabelsFor(historyMonths, mes), [...si.historyTotals, si.effective])}
+    ${buildStatsRow(monthLabelsFor(historyMonths, mes), [...si.historyTotals, si.effective])}
     <div class="sub-detail${isOpen ? " no-anim" : ""}" id="${subId}" ${isOpen ? "" : "hidden"}></div>`;
 }
 
