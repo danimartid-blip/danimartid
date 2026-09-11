@@ -567,19 +567,17 @@ function renderStats(selectedKey) {
   // Los totales de "Por pagar / Por cobrar" los escribe renderPorPagarDetail,
   // que los separa bien (ver ahí el neteo por grupo).
 
-  // Liquidez ("¿cuánto tengo de verdad disponible AHORA?") solo descuenta lo
-  // que vence pronto (próximos ~40 días) — una cuota futura (ej. la 2 de 3,
-  // que vence dentro de 2 ciclos) ya se ve reflejada en su propio mes en
-  // Presupuesto/Dashboard, pero no debe bajar la liquidez de HOY solo porque
-  // ya quedó registrada de antemano. "Por pagar (pendiente)" arriba sí sigue
-  // mostrando el total completo, para tener la foto entera de la deuda.
+  // Ventana de corto plazo (la que usa Liquidez): lo que vence dentro de los
+  // próximos ~40 días. Una cuota futura (la 2 de 3, que vence dentro de 2
+  // ciclos) ya se ve en su propio mes en Presupuesto/Dashboard, pero no debe
+  // bajar la liquidez de HOY solo porque quedó registrada de antemano.
   //
   // OJO: NO alcanza con "vence este mes calendario" — casi todo lo comprado
   // a crédito este mes vence recién el mes que viene (el ciclo de
   // facturación), así que ese corte dejaba afuera prácticamente todo el
-  // "por pagar" normal, no solo las cuotas futuras. Por eso se usa una
-  // ventana rodante de días desde hoy: cubre "el próximo estado de cuenta"
-  // sin importar en qué día del mes esté parado, y sigue excluyendo un
+  // "por pagar" normal, no solo las cuotas futuras. Por eso la ventana es
+  // rodante en días desde hoy: cubre "el próximo estado de cuenta" sin
+  // importar en qué día del mes estés parado, y sigue excluyendo un
   // vencimiento 2 ciclos más allá.
   const hoy = new Date();
   const cutoffPronto = new Date(hoy);
@@ -589,97 +587,113 @@ function renderStats(selectedKey) {
     if (!d) return true; // sin fecha registrada: más seguro tratarlo como ya exigible
     return d <= cutoffPronto;
   });
-  const porPagarPronto = -pendientesPronto.reduce((s, m) => s + m.monto, 0);
 
   const totalCuentas = cuentas.reduce((s, c) => s + c.saldo, 0);
-  const liquidez = totalCuentas - porPagarPronto;
-
-  renderLiquidezPresupuestada(selectedKey, liquidez, totalCuentas, porPagarPronto);
+  renderIndicadores(selectedKey, {
+    totalCuentas,
+    pagarPronto: sumaPagar(pendientesPronto),
+    pagarTotal: sumaPagar(pendientes),
+    cobrarTotal: sumaCobrar(pendientes),
+  });
   renderConciliacion(selectedKey);
   renderPorPagarDetail(pendientes);
 }
 
-/** Protagonista: con cuánto terminarías si cumples el presupuesto del mes filtrado.
- * La liquidez real de hoy queda como dato secundario debajo. Es la mirada de
- * corto plazo (~40 días). "Patrimonio líquido" (ver setPatrimonio abajo) es
- * esa misma Liquidez, pero sumándole además todo lo que ya está registrado en
- * meses FUTUROS al seleccionado (cuotas futuras, etc.) — así incorpora lo que
- * ya sabés que viene, no solo lo del mes en curso. */
-function renderLiquidezPresupuestada(selectedKey, liquidezReal, totalCuentas, porPagarPronto) {
-  const grande = $("statLiquidezPpto");
-  const estado = $("liquidezEstado");
-  const saldoValor = $("liquidezRealValue");
-  const statPl = $("statPatrimonioLiquido");
+/** Neteo por grupo (medio de pago + fecha de vencimiento) de lo "Por pagar".
+ * No se clasifica movimiento a movimiento: un préstamo que hiciste arrastra
+ * además las filas que lo van bajando (abonos que te pagaron, castigos por
+ * incobrable), que son negativas pero NO son deuda tuya. Ej.: préstamo de
+ * $100.000 − $50.000 que te devolvieron − $30.000 castigados = $20.000 que te
+ * siguen debiendo, y ni un peso de "por pagar". */
+function netosPorGrupo(movs) {
+  const porGrupo = {};
+  for (const m of movs) {
+    const k = `${m.medioPago || "(sin medio de pago)"}|||${(m.fechaVencimiento || "").trim()}`;
+    porGrupo[k] = (porGrupo[k] || 0) - m.monto; // positivo = debés, negativo = te deben
+  }
+  return Object.values(porGrupo);
+}
+const sumaPagar = (movs) => netosPorGrupo(movs).filter((n) => n > 0).reduce((s, n) => s + n, 0);
+const sumaCobrar = (movs) => netosPorGrupo(movs).filter((n) => n < 0).reduce((s, n) => s + Math.abs(n), 0);
 
-  // "Saldo actual" es siempre el mismo dato, sin el mes adelante (el mes ya
-  // está en el filtro de arriba). Su fórmula vive detrás del "?".
-  Anim.numero(saldoValor, liquidezReal, fmtCLP);
-  saldoValor.className = "stat-value hero-num-sm " + (liquidezReal >= 0 ? "income" : "expense");
-  $("infoSaldo").textContent =
-    `Suma de los saldos de tus cuentas (${fmtCLP(totalCuentas)}) menos lo "Por pagar" que vence pronto, ` +
-    `dentro de los próximos 40 días (${fmtCLP(porPagarPronto)}). El total completo de deuda, venza cuando venza, ` +
-    `está más abajo en "Por pagar (pendiente)".`;
+/** Los tres indicadores de arriba — los que se usan para decidir. Salen de la
+ * misma materia prima (plata en cuentas, deuda, cobros, presupuesto) y se
+ * diferencian en dos ejes: cuánta deuda descuentan y si proyectan el mes:
+ *
+ *   Saldo actual       = plata − por pagar de corto plazo        → la foto de HOY
+ *   Liquidez           = Saldo actual, con el mes presupuestado  → corto plazo
+ *   Patrimonio líquido = plata − TODA la deuda + TODO lo por cobrar,
+ *                        con el mes presupuestado                → la foto completa
+ *
+ * "Con el mes presupuestado" = se le saca lo real que ya pasó del mes mirado y
+ * se le pone el presupuesto de ese mes en su lugar: con cuánto terminás si
+ * cumplís el ppto. El paso de sacar lo real es obligatorio — si solo se sumara
+ * el presupuesto, el mes se contaría dos veces (lo que ya gastaste ya está
+ * dentro de la plata y de la deuda).
+ *
+ * La deuda y los cobros salen del mismo neteo por grupo que la ficha "Por pagar
+ * / Por cobrar" de más abajo, así que los números de arriba y los de abajo
+ * siempre cuadran. */
+function renderIndicadores(selectedKey, d) {
+  const saldoActual = d.totalCuentas - d.pagarPronto;
+  const basePatrimonio = d.totalCuentas - d.pagarTotal + d.cobrarTotal;
 
-  // monto ya viene con signo (Gasto negativo, Ingreso positivo) — sumarlo
-  // directo neta ingresos y gastos futuros de una.
-  const futurosNetos = movimientos
-    .filter((m) => monthKey(m) > selectedKey)
-    .reduce((s, m) => s + m.monto, 0);
-  const setPatrimonio = (base) => {
-    const pl = base + futurosNetos;
-    Anim.numero(statPl, pl, fmtCLP);
-    statPl.className = "stat-value hero-num " + (pl >= 0 ? "income" : "expense");
-    $("infoPatrimonio").textContent =
-      `La Liquidez de arriba (${fmtCLP(base)}) más el neto de todo lo que ya está registrado en meses ` +
-      `posteriores al que estás mirando (${fmtCLP(futurosNetos)}): cuotas cargadas de antemano, cobros ` +
-      `agendados, etc. Es la mirada de "contando todo lo que ya sé que viene".`;
-  };
-
+  // --- el mismo ajuste de presupuesto para los dos indicadores de arriba ---
   const ingresoPpto = totalBudgetForTipo("Ingreso", selectedKey);
   const gastoPpto = totalBudgetForTipo("Gasto", selectedKey);
-  const hayPpto = ingresoPpto !== 0 || gastoPpto !== 0;
+  const resultadoPpto = ingresoPpto - gastoPpto;
 
-  const mostrarReal = (nota) => {
-    Anim.numero(grande, liquidezReal, fmtCLP);
-    grande.className = "stat-value hero-num " + (liquidezReal >= 0 ? "income" : "expense");
-    estado.textContent = nota;
-    estado.hidden = false;
-    $("infoLiquidez").textContent =
-      `Acá se muestra tu saldo actual tal cual (cuentas menos lo por pagar que vence pronto), sin proyección: ${nota.toLowerCase()}.`;
-    setPatrimonio(liquidezReal);
-  };
-
-  if (!hayPpto) return mostrarReal("Sin presupuesto para este mes");
-
-  const [y, mo] = selectedKey.split("-");
-  const nombreMes = `${MESES[Number(mo)]} ${y}`;
-
-  // Un mes pasado no se puede "proyectar": la liquidez real de hoy ya incluye
-  // todo lo que vino después. Mostramos la real y lo decimos.
-  if (selectedKey < mesActual()) return mostrarReal(`${nombreMes} ya pasó`);
-
-  // Clave: la liquidez real ya trae los movimientos reales del mes (los pagados
-  // bajaron el saldo, los por pagar subieron la deuda). Si le sumáramos el
-  // presupuesto completo encima, ese mes se contaría dos veces. Entonces se
-  // retrocede a la liquidez previa al mes y se aplica SOLO el presupuesto.
+  // Lo real del mes va COMPLETO (pagado y por pagar): las dos formas ya están
+  // dentro de la base, una bajando la plata y la otra subiendo la deuda.
   const delMes = movimientos.filter((m) => monthKey(m) === selectedKey);
   const realIngresos = delMes.filter((m) => m.tipo === "Ingreso").reduce((s, m) => s + Math.abs(m.monto), 0);
   const realGastos = delMes.filter((m) => m.tipo === "Gasto").reduce((s, m) => s + Math.abs(m.monto), 0);
-  const liquidezAntesDelMes = liquidezReal - (realIngresos - realGastos);
+  const realNeto = realIngresos - realGastos;
 
-  const resultadoPpto = ingresoPpto - gastoPpto;
-  const liquidezPpto = liquidezAntesDelMes + resultadoPpto;
+  const [y, mo] = selectedKey.split("-");
+  const nombreMes = `${MESES[Number(mo)]} ${y}`;
+  const hayPpto = ingresoPpto !== 0 || gastoPpto !== 0;
+  // Un mes pasado no se proyecta: lo que tenés hoy ya incluye todo lo que vino
+  // después, cambiarle lo real por su presupuesto sería inventar.
+  const esPasado = selectedKey < mesActual();
+  const proyecta = hayPpto && !esPasado;
+  const ajuste = proyecta ? resultadoPpto - realNeto : 0;
+  const nota = !hayPpto ? "Sin presupuesto para este mes" : esPasado ? `${nombreMes} ya pasó` : "";
 
-  Anim.numero(grande, liquidezPpto, fmtCLP);
-  grande.className = "stat-value hero-num " + (liquidezPpto >= 0 ? "income" : "expense");
-  estado.hidden = true;
+  const pintar = (el, valor, clase) => {
+    Anim.numero(el, valor, fmtCLP);
+    el.className = `stat-value ${clase} ` + (valor >= 0 ? "income" : "expense");
+  };
+  const fraseMes = proyecta
+    ? `Sobre eso se saca lo real que llevás de ${nombreMes} (${fmtCLP(realNeto)}) y se pone el presupuesto del mes ` +
+      `en su lugar: ingresos ${fmtCLP(ingresoPpto)} menos gastos ${fmtCLP(gastoPpto)} = ${fmtCLP(resultadoPpto)}.`
+    : `No se proyecta el mes: ${nota.toLowerCase()}.`;
 
+  // 1) Saldo actual — la foto de hoy, sin proyectar nada.
+  pintar($("liquidezRealValue"), saldoActual, "hero-num-sm");
+  $("infoSaldo").textContent =
+    `La plata que tenés hoy, sin proyectar nada: la suma de tus cuentas (${fmtCLP(d.totalCuentas)}) menos lo por ` +
+    `pagar que vence dentro de los próximos 40 días (${fmtCLP(d.pagarPronto)}). Es el piso de los otros dos ` +
+    `indicadores. La deuda completa, venza cuando venza, está más abajo en "Por pagar".`;
+
+  // 2) Liquidez — corto plazo, ya presupuestado.
+  const liquidez = saldoActual + ajuste;
+  pintar($("statLiquidezPpto"), liquidez, "hero-num");
+  const estado = $("liquidezEstado");
+  estado.textContent = nota;
+  estado.hidden = !nota;
   $("infoLiquidez").textContent =
-    `Con cuánto cerrás ${nombreMes} si cumplís el presupuesto. Al saldo actual (${fmtCLP(liquidezReal)}) se le ` +
-    `quita lo real que ya pasó este mes (${fmtCLP(realIngresos - realGastos)}) y se le aplica el neto presupuestado: ` +
-    `ingresos ${fmtCLP(ingresoPpto)} menos gastos ${fmtCLP(gastoPpto)} = ${fmtCLP(resultadoPpto)}.`;
+    `Con cuánto disponible cerrás ${nombreMes} si cumplís el presupuesto. Parte del saldo actual ` +
+    `(${fmtCLP(saldoActual)}: cuentas menos la deuda que vence en los próximos 40 días — la de más allá todavía ` +
+    `no te toca pagarla). ${fraseMes}`;
 
-  setPatrimonio(liquidezPpto);
+  // 3) Patrimonio líquido — la foto completa, también presupuestada.
+  const patrimonio = basePatrimonio + ajuste;
+  pintar($("statPatrimonioLiquido"), patrimonio, "hero-num");
+  $("infoPatrimonio").textContent =
+    `Lo mismo que la Liquidez, pero contando TODA la deuda (venza cuando venza, cuotas futuras incluidas) y todo ` +
+    `lo que te deben: cuentas ${fmtCLP(d.totalCuentas)} menos por pagar ${fmtCLP(d.pagarTotal)} más por cobrar ` +
+    `${fmtCLP(d.cobrarTotal)} = ${fmtCLP(basePatrimonio)}. ${fraseMes}`;
 }
 
 /** "10-10-2026" -> "10 Oct 2026" (y "sin fecha" si no tiene). */
@@ -694,23 +708,6 @@ function fechaVencLegible(venc, d) {
  * el detalle por tarjeta estaba escondido detrás de un botón aparte. Ahora se
  * toca la fecha y se abre ahí mismo lo que se paga/cobra ese día. */
 function renderPorPagarDetail(pendientes) {
-  // Se clasifica por el NETO de cada grupo (medio de pago + vencimiento), no
-  // movimiento a movimiento: un préstamo que hiciste arrastra además las filas
-  // que lo van bajando (abonos que te pagaron, castigos por incobrable), que
-  // son negativas pero NO son deuda tuya. Ej.: préstamo de $100.000 − $50.000
-  // que te devolvieron − $30.000 castigados = $20.000 que te siguen debiendo,
-  // y ni un peso de "por pagar".
-  const netosPorGrupo = (movs) => {
-    const porGrupo = {};
-    for (const m of movs) {
-      const k = `${m.medioPago || "(sin medio de pago)"}|||${(m.fechaVencimiento || "").trim()}`;
-      porGrupo[k] = (porGrupo[k] || 0) - m.monto; // positivo = debés, negativo = te deben
-    }
-    return Object.values(porGrupo);
-  };
-  const sumaPagar = (movs) => netosPorGrupo(movs).filter((n) => n > 0).reduce((s, n) => s + n, 0);
-  const sumaCobrar = (movs) => netosPorGrupo(movs).filter((n) => n < 0).reduce((s, n) => s + Math.abs(n), 0);
-
   Anim.numero($("statPorPagar"), sumaPagar(pendientes), fmtCLP);
   Anim.numero($("statPorCobrar"), sumaCobrar(pendientes), fmtCLP);
 
@@ -1401,7 +1398,7 @@ async function init() {
   $("monthSelect").addEventListener("change", (e) => renderStats(e.target.value));
 
   // Cada "?" abre/cierra la explicación de SU número (el texto lo llena
-  // renderLiquidezPresupuestada, con los montos reales del mes mirado).
+  // renderIndicadores, con los montos reales del mes mirado).
   document.querySelectorAll(".info-btn[data-info]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const panel = $(btn.dataset.info);
