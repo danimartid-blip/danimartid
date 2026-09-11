@@ -1353,11 +1353,11 @@ function renderTrend() {
     // Mouse: seguir siempre. Dedo: solo mientras está apoyado y arrastrando.
     if (e.pointerType === "mouse" || e.buttons > 0 || svg.hasPointerCapture?.(e.pointerId)) seguirPuntero(e);
   });
-  // Al levantar el dedo el valor queda visible para poder leerlo; con el mouse
-  // se esconde al salir del gráfico, como antes.
-  svg.addEventListener("pointerleave", (e) => {
-    if (e.pointerType === "mouse") hideTip();
-  });
+  // La etiqueta vive solo mientras estás tocando/apuntando: al soltar el dedo
+  // (o al sacar el mouse del gráfico) desaparece, en vez de quedarse pegada.
+  svg.addEventListener("pointerup", hideTip);
+  svg.addEventListener("pointercancel", hideTip);
+  svg.addEventListener("pointerleave", hideTip);
 }
 
 async function loadData() {
