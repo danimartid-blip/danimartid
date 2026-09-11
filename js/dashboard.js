@@ -478,9 +478,17 @@ function renderStats(selectedKey) {
   const inMonth = movimientos.filter((m) => monthKey(m) === selectedKey);
 
   // Categorías (gasto neto de reembolsos) vs presupuesto — todas, sin recortar.
-  // Solo se listan categorías con al menos un Gasto este mes (un reembolso solo,
-  // sin gasto que reembolsar, no pinta acá — igual entra al Balance como ingreso).
+  // Se listan las que tienen al menos un Gasto este mes, MÁS las que tienen
+  // presupuesto (fijado o promedio de 3 meses) aunque todavía no haya nada
+  // cargado este mes puntual — así "Diezmo" o "Entretenimiento" no desaparecen
+  // solo porque recién no los pagaste. Un presupuesto en $0 sí se omite (no
+  // aporta nada mostrarlo). (Un reembolso solo, sin gasto que reembolsar, no
+  // pinta acá tampoco — igual entra al Balance como ingreso.)
   const categoriasConGasto = new Set(inMonth.filter((m) => m.tipo === "Gasto").map((m) => m.categoria));
+  for (const cat of categoriasForTipo("Gasto", selectedKey)) {
+    const meta = budgetForCategoria(selectedKey, cat);
+    if (meta !== null && meta > 0) categoriasConGasto.add(cat);
+  }
   const byCat = {};
   for (const cat of categoriasConGasto) byCat[cat] = montoRealNeto("Gasto", cat, selectedKey);
   const sorted = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
