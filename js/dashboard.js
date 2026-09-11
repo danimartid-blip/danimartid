@@ -126,10 +126,16 @@ function montoRealNeto(tipo, categoria, mes, subcategoria, anchorMes = mes) {
     for (const sub of gastoSubs) total += gastoMonthlyBreakdown(categoria, sub, mes, anchorMes).neto;
     return total;
   }
-  // Ingreso, categoría entera: sin neteo (un Ingreso nunca se neta contra Ingresos).
+  // Ingreso: sin neteo (un Ingreso nunca se neta contra Ingresos). Si se pide
+  // una subcategoría puntual, se filtra por ella igual que del lado Gasto —
+  // sin este filtro, CUALQUIER subcategoría de Ingreso devolvía el total de
+  // toda la categoría (ej. "Cuenta remunerada" mostraba lo mismo que
+  // "Sueldo"), inflando el presupuesto de Ingreso al sumar cada subcategoría.
   let total = 0;
   for (const m of movimientos) {
-    if (m.categoria === categoria && monthKey(m) === mes && m.tipo === tipo) total += Math.abs(m.monto);
+    if (m.categoria !== categoria || monthKey(m) !== mes || m.tipo !== tipo) continue;
+    if (subcategoria !== undefined && normSub(m.subcategoria) !== normSub(subcategoria)) continue;
+    total += Math.abs(m.monto);
   }
   return total;
 }
