@@ -681,109 +681,122 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal, totalCuentas, po
   setPatrimonio(liquidezPpto);
 }
 
-function renderPorPagarDetail(pendientes) {
-  const withDate = pendientes
-    .map((m) => ({ ...m, venc: parseFechaVenc(m.fechaVencimiento) }))
-    .filter((m) => m.venc);
-
-  // Por período (mes de vencimiento)
-  const byPeriod = {};
-  for (const m of withDate) {
-    const key = `${m.venc.getFullYear()}-${String(m.venc.getMonth() + 1).padStart(2, "0")}`;
-    byPeriod[key] = (byPeriod[key] || 0) - m.monto; // con signo, igual que el total
-  }
-  const periodosEl = $("porPagarPeriodos");
-  periodosEl.innerHTML = "";
-  const today = new Date();
-  for (const [key, monto] of Object.entries(byPeriod).sort()) {
-    const [y, mo] = key.split("-");
-    const isPast = Number(y) < today.getFullYear() ||
-      (Number(y) === today.getFullYear() && Number(mo) < today.getMonth() + 1);
-    const row = document.createElement("div");
-    row.className = "category-row-top";
-    row.style.padding = "8px 0";
-    row.innerHTML = `
-      <span style="color:var(--text-secondary)">${MESES[Number(mo)]} ${y}${isPast ? ' <span class="badge badge-warning">atrasado</span>' : ""}</span>
-      <span class="cat-amounts">${fmtCLP(monto)}</span>`;
-    periodosEl.appendChild(row);
-  }
-  if (Object.keys(byPeriod).length === 0) {
-    periodosEl.innerHTML = '<div class="skeleton no-spinner">Sin vencimientos con fecha</div>';
-  }
-
-  renderPagarTarjetas(pendientes);
+/** "10-10-2026" -> "10 Oct 2026" (y "sin fecha" si no tiene). */
+function fechaVencLegible(venc, d) {
+  if (!d) return "Sin fecha de vencimiento";
+  return `${d.getDate()} ${MESES[d.getMonth() + 1]} ${d.getFullYear()}`;
 }
 
-/** Pagar un estado de cuenta: agrupa lo pendiente por tarjeta + fecha de
- * vencimiento (que es justo lo que llega en una factura), marca esos movimientos
- * como Pagado y registra la diferencia (comisiones, gastos administrativos) que
- * el banco agrega al facturar y que nunca calza con lo registrado. */
-function renderPagarTarjetas(pendientes) {
-  const cont = $("pagarTarjetas");
-  cont.innerHTML = "";
+/** Pendientes agrupados por FECHA de vencimiento, con dos columnas separadas:
+ * lo que debés y lo que te deben. Antes iba todo en un solo número neto (un
+ * cobro de $20.000 se "comía" $20.000 de deuda y no se veía por ningún lado) y
+ * el detalle por tarjeta estaba escondido detrás de un botón aparte. Ahora se
+ * toca la fecha y se abre ahí mismo lo que se paga/cobra ese día. */
+function renderPorPagarDetail(pendientes) {
+  // Clasificación por movimiento: monto negativo = plata que debés; positivo =
+  // plata que te deben (un préstamo que hiciste, un reembolso pendiente).
+  const sumaPagar = (movs) => movs.filter((m) => m.monto < 0).reduce((s, m) => s + Math.abs(m.monto), 0);
+  const sumaCobrar = (movs) => movs.filter((m) => m.monto > 0).reduce((s, m) => s + m.monto, 0);
 
-  const grupos = {};
+  $("statPorPagar").textContent = fmtCLP(sumaPagar(pendientes));
+  $("statPorCobrar").textContent = fmtCLP(sumaCobrar(pendientes));
+
+  const porFecha = {};
   for (const m of pendientes) {
-    const medio = m.medioPago || "(sin medio de pago)";
-    const venc = m.fechaVencimiento || "(sin fecha)";
-    const k = `${medio}|||${venc}`;
-    (grupos[k] ||= { medio, venc, movs: [] }).movs.push(m);
+    const venc = (m.fechaVencimiento || "").trim();
+    (porFecha[venc] ||= { venc, d: parseFechaVenc(venc), movs: [] }).movs.push(m);
   }
+  const fechas = Object.values(porFecha).sort((a, b) => {
+    if (!a.d) return 1; // las sin fecha, al final
+    if (!b.d) return -1;
+    return a.d - b.d;
+  });
 
-  const porVenc = (a, b) => {
-    const da = parseFechaVenc(a.venc), db = parseFechaVenc(b.venc);
-    return da && db ? da - db : 0;
-  };
-  // Un total negativo es al revés de una deuda de tarjeta: es plata que TE deben
-  // (un préstamo que hiciste), no plata que tú debes.
-  const aPagar = Object.values(grupos).filter((g) => -g.movs.reduce((s, m) => s + m.monto, 0) >= 0).sort(porVenc);
-  const aCobrar = Object.values(grupos).filter((g) => -g.movs.reduce((s, m) => s + m.monto, 0) < 0).sort(porVenc);
-
-  if (aPagar.length === 0 && aCobrar.length === 0) {
+  const cont = $("porPagarPeriodos");
+  cont.innerHTML = "";
+  if (fechas.length === 0) {
     cont.innerHTML = '<div class="skeleton no-spinner">Nada pendiente</div>';
     return;
   }
 
-  const seccion = (titulo, grupos_, esCobrar) => {
-    if (grupos_.length === 0) return "";
-    const filas = grupos_.map((g) => filaGrupo(g, esCobrar)).join("");
-    return `<div class="card-title" style="margin:14px 0 6px;">${titulo}</div>${filas}`;
-  };
-  cont.innerHTML = seccion("Por cobrar", aCobrar, true) + seccion("Por pagar", aPagar, false);
+  const hoy = new Date(new Date().toDateString());
+  for (const f of fechas) {
+    const pagar = sumaPagar(f.movs);
+    const cobrar = sumaCobrar(f.movs);
+    const vencido = f.d && f.d < hoy && pagar > 0;
+    const id = `venc${++pagoUid}`;
 
-  // Los data-target quedaron en el HTML recién insertado — engancha los clicks ahora.
-  for (const g of [...aCobrar, ...aPagar]) {
-    const id = g._id;
-    const wrap = cont.querySelector(`[data-wrap="${id}"]`);
-    const panel = cont.querySelector(`#${id}`);
-    wrap.querySelector(".cat-clickable").addEventListener("click", () => {
+    const row = document.createElement("div");
+    row.className = "category-row";
+    row.innerHTML = `
+      <div class="category-row-top cat-clickable">
+        <span class="cat-name">${fechaVencLegible(f.venc, f.d)}${vencido ? ' <span class="badge badge-critical">atrasado</span>' : ""}</span>
+        <span class="venc-montos">
+          <span class="venc-monto${pagar ? " expense" : " is-empty"}">${pagar ? fmtCLP(pagar) : "—"}</span>
+          <span class="venc-monto${cobrar ? " income" : " is-empty"}">${cobrar ? fmtCLP(cobrar) : "—"}</span>
+        </span>
+      </div>
+      <div class="cat-detail" id="${id}" hidden></div>`;
+
+    const panel = row.querySelector(`#${id}`);
+    row.querySelector(".cat-clickable").addEventListener("click", () => {
       panel.hidden = !panel.hidden;
       if (!panel.hidden && !panel.dataset.listo) {
         panel.dataset.listo = "1";
+        renderGruposDeFecha(panel, f.movs);
+      }
+    });
+    cont.appendChild(row);
+  }
+}
+
+/** Dentro de una fecha: una fila por medio de pago (el estado de cuenta que
+ * llega ese día), y cada una abre el panel granular de siempre — pagar la
+ * tarjeta, o registrar un abono/castigo si es algo por cobrar. */
+function renderGruposDeFecha(panel, movs) {
+  const grupos = {};
+  for (const m of movs) {
+    const medio = m.medioPago || "(sin medio de pago)";
+    (grupos[medio] ||= { medio, venc: m.fechaVencimiento || "", movs: [] }).movs.push(m);
+  }
+  const lista = Object.values(grupos).sort(
+    (a, b) => Math.abs(b.movs.reduce((s, m) => s + m.monto, 0)) - Math.abs(a.movs.reduce((s, m) => s + m.monto, 0))
+  );
+
+  panel.innerHTML = lista.map((g) => filaGrupo(g, -g.movs.reduce((s, m) => s + m.monto, 0) < 0)).join("");
+
+  for (const g of lista) {
+    const wrap = panel.querySelector(`[data-wrap="${g._id}"]`);
+    const sub = panel.querySelector(`#${g._id}`);
+    wrap.querySelector(".cat-clickable").addEventListener("click", () => {
+      sub.hidden = !sub.hidden;
+      if (!sub.hidden && !sub.dataset.listo) {
+        sub.dataset.listo = "1";
         const total = -g.movs.reduce((s, m) => s + m.monto, 0);
-        if (total < 0) renderPanelCobrar(panel, g, Math.abs(total));
-        else renderPanelPago(panel, g, total);
+        if (total < 0) renderPanelCobrar(sub, g, Math.abs(total));
+        else renderPanelPago(sub, g, total);
       }
     });
   }
 }
 
+/** Fila de un medio de pago dentro de una fecha — el "estado de cuenta" que
+ * llega ese día. Se abre para pagar la tarjeta (renderPanelPago) o registrar
+ * un abono/castigo si es algo por cobrar (renderPanelCobrar). */
 function filaGrupo(g, esCobrar) {
   const total = Math.abs(-g.movs.reduce((s, m) => s + m.monto, 0));
   const id = `pg${++pagoUid}`;
   g._id = id;
-  // El vencimiento va destacado: dos cuotas del mismo monto solo se distinguen por eso.
-  const venc = parseFechaVenc(g.venc);
-  const vencido = !esCobrar && venc && venc < new Date(new Date().toDateString());
+  // La fecha ya la pone la fila de arriba (esta va anidada dentro de ella), así
+  // que acá solo se repite lo propio del medio: monto y cuántos movimientos.
   return `
     <div class="category-row" data-wrap="${id}">
       <div class="category-row-top cat-clickable" data-target="${id}">
         <span class="cat-name">${g.medio}</span>
-        <span class="cat-amounts">${fmtCLP(total)}</span>
+        <span class="cat-amounts ${esCobrar ? "income" : ""}">${fmtCLP(total)}</span>
       </div>
-      <div style="font-size:11.5px;margin-top:4px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
-        <span class="badge ${vencido ? "badge-critical" : "badge-muted"}">vence ${g.venc}</span>
-        <span style="color:var(--text-muted)">${g.movs.length} movimiento${g.movs.length === 1 ? "" : "s"}</span>
+      <div style="font-size:11.5px;margin-top:3px;color:var(--text-muted);">
+        ${esCobrar ? "te deben · " : ""}${g.movs.length} movimiento${g.movs.length === 1 ? "" : "s"}
       </div>
       <div class="sub-detail" id="${id}" hidden style="margin-top:10px;"></div>
     </div>`;
@@ -1369,12 +1382,6 @@ async function init() {
   renderTrend();
 
   $("monthSelect").addEventListener("change", (e) => renderStats(e.target.value));
-
-  $("porPagarToggle").addEventListener("click", () => {
-    const detail = $("porPagarDetail");
-    detail.hidden = !detail.hidden;
-    $("porPagarToggle").textContent = detail.hidden ? "Ver detalle por banco/tarjeta ▾" : "Ocultar ▴";
-  });
 
   // Cada "?" abre/cierra la explicación de SU número (el texto lo llena
   // renderLiquidezPresupuestada, con los montos reales del mes mirado).

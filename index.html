@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202609102244">
+<link rel="stylesheet" href="css/styles.css?v=202609102250">
 </head>
 <body>
 
@@ -73,16 +73,25 @@
     </div>
 
     <div class="card">
-      <div class="stat-label">Por pagar (pendiente)</div>
-      <div class="stat-value" style="color:var(--serious)" id="statPorPagar">$0</div>
-
-      <div class="card-title" style="margin:16px 0 6px;">En qué meses se paga</div>
-      <div id="porPagarPeriodos"></div>
-
-      <button class="btn-link" id="porPagarToggle" style="margin-top:6px;">Ver detalle por banco/tarjeta ▾</button>
-      <div id="porPagarDetail" hidden style="margin-top:8px;">
-        <div id="pagarTarjetas"></div>
+      <div class="dual-stat">
+        <div>
+          <div class="stat-label">Por pagar</div>
+          <div class="stat-value" style="color:var(--serious)" id="statPorPagar">$0</div>
+        </div>
+        <div>
+          <div class="stat-label">Por cobrar</div>
+          <div class="stat-value income" id="statPorCobrar">$0</div>
+        </div>
       </div>
+
+      <div class="venc-header">
+        <span>Vence</span>
+        <span class="venc-montos">
+          <span class="venc-monto">Por pagar</span>
+          <span class="venc-monto">Por cobrar</span>
+        </span>
+      </div>
+      <div id="porPagarPeriodos"></div>
     </div>
   </div>
 </div>
@@ -106,9 +115,9 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202609102244"></script>
+<script src="js/config.js?v=202609102250"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202609102244"></script>
-<script src="js/dashboard.js?v=202609102244"></script>
+<script src="js/sheets-auth.js?v=202609102250"></script>
+<script src="js/dashboard.js?v=202609102250"></script>
 </body>
 </html>

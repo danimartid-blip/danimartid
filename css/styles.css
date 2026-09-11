@@ -282,6 +282,37 @@ header.topbar h1 {
   margin: 18px 0 14px;
 }
 
+/* dos totales lado a lado (Por pagar / Por cobrar) */
+.dual-stat { display: flex; gap: 16px; }
+.dual-stat > div { flex: 1; min-width: 0; }
+.dual-stat .stat-value { font-size: 21px; letter-spacing: -0.02em; }
+
+/* tabla de vencimientos: fecha a la izquierda, dos columnas de montos */
+.venc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--grid);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.venc-montos { display: inline-flex; gap: 10px; flex-shrink: 0; }
+.venc-monto {
+  min-width: 84px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+}
+.venc-header .venc-monto { font-weight: 700; letter-spacing: .05em; }
+.venc-monto.is-empty { color: var(--text-muted); font-weight: 500; }
+
 /* ecuación ingreso − gasto = balance */
 .balance-equation { display: flex; align-items: stretch; justify-content: space-between; gap: 2px; }
 .balance-term {
