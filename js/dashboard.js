@@ -693,10 +693,22 @@ function fechaVencLegible(venc, d) {
  * el detalle por tarjeta estaba escondido detrás de un botón aparte. Ahora se
  * toca la fecha y se abre ahí mismo lo que se paga/cobra ese día. */
 function renderPorPagarDetail(pendientes) {
-  // Clasificación por movimiento: monto negativo = plata que debés; positivo =
-  // plata que te deben (un préstamo que hiciste, un reembolso pendiente).
-  const sumaPagar = (movs) => movs.filter((m) => m.monto < 0).reduce((s, m) => s + Math.abs(m.monto), 0);
-  const sumaCobrar = (movs) => movs.filter((m) => m.monto > 0).reduce((s, m) => s + m.monto, 0);
+  // Se clasifica por el NETO de cada grupo (medio de pago + vencimiento), no
+  // movimiento a movimiento: un préstamo que hiciste arrastra además las filas
+  // que lo van bajando (abonos que te pagaron, castigos por incobrable), que
+  // son negativas pero NO son deuda tuya. Ej.: préstamo de $100.000 − $50.000
+  // que te devolvieron − $30.000 castigados = $20.000 que te siguen debiendo,
+  // y ni un peso de "por pagar".
+  const netosPorGrupo = (movs) => {
+    const porGrupo = {};
+    for (const m of movs) {
+      const k = `${m.medioPago || "(sin medio de pago)"}|||${(m.fechaVencimiento || "").trim()}`;
+      porGrupo[k] = (porGrupo[k] || 0) - m.monto; // positivo = debés, negativo = te deben
+    }
+    return Object.values(porGrupo);
+  };
+  const sumaPagar = (movs) => netosPorGrupo(movs).filter((n) => n > 0).reduce((s, n) => s + n, 0);
+  const sumaCobrar = (movs) => netosPorGrupo(movs).filter((n) => n < 0).reduce((s, n) => s + Math.abs(n), 0);
 
   $("statPorPagar").textContent = fmtCLP(sumaPagar(pendientes));
   $("statPorCobrar").textContent = fmtCLP(sumaCobrar(pendientes));
