@@ -309,8 +309,12 @@ function populateMonthSelect() {
   // antemano (ver el auto-generado de cuotas en registro.js). Ese mes futuro
   // sigue en la lista para poder mirarlo, solo que ya no es el default.
   const hoy = mesActual();
-  if (keys.includes(hoy)) return hoy;
-  return keys.find((k) => k <= hoy) || keys[0];
+  const defaultKey = keys.includes(hoy) ? hoy : keys.find((k) => k <= hoy) || keys[0];
+  // OJO: sin esto, el <select> se queda mostrando su primera opción (la más
+  // nueva, ej. diciembre) aunque renderStats ya se llame con defaultKey — el
+  // dato de arriba quedaba bien pero el filtro visualmente mentía.
+  select.value = defaultKey;
+  return defaultKey;
 }
 
 /** Gasto neto por mes de una categoría (y opcionalmente subcategoría, con el
