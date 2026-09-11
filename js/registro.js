@@ -51,6 +51,101 @@ function parseAnyFecha(raw) {
 
 let cuentasReales = new Set(); // nombres normalizados de tus cuentas (Cuentas!A) — lo demás es "tarjeta de crédito"
 
+/** Un medio de pago tipo "Limited USD" está en dólares — el monto se ingresa
+ * en USD y se convierte solo a CLP con el dólar del día de la compra. */
+function esMedioUSD(medio) {
+  return /usd/i.test(medio || "");
+}
+
+/** "2026-09-10" -> "10-09-2026" (formato que usa mindicador.cl). */
+function isoADiaMesAño(iso) {
+  const [y, m, d] = iso.split("-");
+  return `${d}-${m}-${y}`;
+}
+
+const dolarCache = new Map(); // "DD-MM-YYYY" -> valor
+
+/** Dólar observado (mindicador.cl) para la fecha pedida. Los fines de semana
+ * y feriados no publican valor nuevo, así que si no hay dato ese día se
+ * retrocede día por día (hasta 7) al último hábil. null si falla la consulta
+ * (sin internet, API caída, etc.) — nunca se inventa un valor. */
+async function obtenerDolar(fechaISO) {
+  let d = new Date(`${fechaISO}T00:00:00`);
+  for (let i = 0; i < 7; i++) {
+    const key = isoADiaMesAño(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+    if (dolarCache.has(key)) return { valor: dolarCache.get(key), fechaUsada: key };
+    try {
+      const res = await fetch(`https://mindicador.cl/api/dolar/${key}`);
+      if (res.ok) {
+        const data = await res.json();
+        const valor = data.serie && data.serie[0] && data.serie[0].valor;
+        if (valor) {
+          dolarCache.set(key, valor);
+          return { valor, fechaUsada: key };
+        }
+      }
+    } catch (err) {
+      console.error("Error consultando dólar:", err);
+      return null; // sin internet o API caída — no seguir reintentando en loop
+    }
+    d.setDate(d.getDate() - 1); // sin dato ese día (finde/feriado): probar el anterior
+  }
+  return null;
+}
+
+/** Estado de la conversión USD->CLP vigente para lo que hay tipeado ahora
+ * mismo — se recalcula solo (ver actualizarUsdHint) y handleSubmit lo usa tal
+ * cual, para no volver a pedirle la tasa a la API justo al guardar. Guarda
+ * montoUsd (el número exacto tipeado, no el redondeado) para poder confirmar
+ * en handleSubmit que sigue correspondiendo a lo que hay en el campo. */
+let conversionUsdActual = null; // { fechaISO, montoUsd, valor, montoClp } | null
+
+/** Refresca la etiqueta de Monto y el cuadrito de conversión según el medio
+ * de pago y la fecha elegidos. Se llama al tipear medio/monto/fecha. */
+async function actualizarUsdHint() {
+  const medio = $("medioPago").value.trim();
+  const hint = $("usdHint");
+  const label = $("montoLabel");
+
+  if (!esMedioUSD(medio)) {
+    label.textContent = "Monto";
+    hint.hidden = true;
+    conversionUsdActual = null;
+    return;
+  }
+
+  label.textContent = "Monto (USD)";
+  const montoUsd = Number($("monto").value);
+  const fechaISO = $("fecha").value || todayISO();
+
+  if (!montoUsd) {
+    hint.hidden = true;
+    conversionUsdActual = null;
+    return;
+  }
+
+  hint.hidden = false;
+  hint.className = "usd-hint";
+  hint.textContent = "Buscando el dólar del día…";
+
+  const dolar = await obtenerDolar(fechaISO);
+  // Si mientras esperábamos la respuesta el usuario ya cambió el medio/monto/
+  // fecha, esta respuesta quedó vieja — no pisar lo que se esté mostrando ahora.
+  if ($("medioPago").value.trim() !== medio || $("monto").value != montoUsd || $("fecha").value !== fechaISO) return;
+
+  if (!dolar) {
+    hint.className = "usd-hint usd-hint-error";
+    hint.textContent = "No se pudo obtener el dólar del día (¿sin internet?). Poné el monto en CLP directamente si preferís.";
+    conversionUsdActual = null;
+    return;
+  }
+
+  const montoClp = Math.round(montoUsd * dolar.valor);
+  const [dd, mm, yyyy] = dolar.fechaUsada.split("-");
+  hint.textContent = `≈ ${fmtCLP(montoClp)} CLP · dólar $${dolar.valor.toLocaleString("es-CL")} del ${dd}/${mm}/${yyyy}`;
+  conversionUsdActual = { fechaISO, montoUsd, valor: dolar.valor, montoClp };
+}
+
 async function loadOptions() {
   try {
     // A=Fecha E=Categoria F=Subcategoria G=Medio_pago H=Estado I=Monto J=Detalle K=Fecha_vencimiento
@@ -265,6 +360,9 @@ function resetFormForNextEntry() {
   $("toggleCuota").textContent = "+ ¿Es una cuota?";
 
   $("ultimosMovMedio").hidden = true;
+  $("montoLabel").textContent = "Monto";
+  $("usdHint").hidden = true;
+  conversionUsdActual = null;
   $("medioPago").focus();
 }
 
@@ -331,16 +429,34 @@ async function handleSubmit(e) {
   try {
     const fecha = $("fecha").value; // YYYY-MM-DD
     const [yyyy, mm] = fecha.split("-");
-    const monto = Number($("monto").value) || 0;
-    const signedMonto = state.tipo === "Gasto" ? -Math.abs(monto) : Math.abs(monto);
+    const medioPago = $("medioPago").value.trim();
+    const montoIngresado = Number($("monto").value) || 0;
     const categoria = $("categoria").value.trim();
     const subcategoria = $("subcategoria").value.trim();
-    const medioPago = $("medioPago").value.trim();
-    const detalle = $("detalle").value.trim();
+    let detalle = $("detalle").value.trim();
     const vencIso = $("fechaVencimiento").value; // "" si no aplica
     const cuotaActual = Number($("cuotaDevengada").value) || 0;
     const cuotasTotal = Number($("cuotasTotales").value) || 0;
     const mesPagoOpcion = $("mesPagoOpcion").value.trim() || "";
+
+    // Medio en USD (ej. "Limited USD"): lo que se tipeó en Monto es dólares,
+    // hay que guardar el equivalente en CLP (todo el resto de la app asume
+    // pesos). No convertir "a ciegas": si la conversión vigente no
+    // corresponde EXACTO a lo tipeado ahora (cambiaste el monto/fecha después
+    // de que se calculó, o la consulta a la API falló), mejor frenar que
+    // guardar un monto en dólares como si fueran pesos chilenos.
+    let montoParaGuardar = montoIngresado;
+    if (esMedioUSD(medioPago)) {
+      if (!conversionUsdActual || conversionUsdActual.fechaISO !== fecha || conversionUsdActual.montoUsd !== montoIngresado) {
+        showToast("Esperá a que se calcule el dólar del día antes de guardar", true);
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Guardar";
+        return;
+      }
+      montoParaGuardar = conversionUsdActual.montoClp;
+      detalle = `${detalle} (USD ${montoIngresado} @ $${conversionUsdActual.valor.toLocaleString("es-CL")})`.trim();
+    }
+    const signedMonto = state.tipo === "Gasto" ? -Math.abs(montoParaGuardar) : Math.abs(montoParaGuardar);
 
     const row = [
       fecha, yyyy, String(Number(mm)), state.tipo, categoria, subcategoria, medioPago, state.estado,
@@ -409,7 +525,10 @@ async function init() {
     actualizarEstadoPorMedio(); // débito/cuenta real -> Pagado, tarjeta de crédito -> Por pagar
     if (!$("vencSection").hidden) renderVencChips();
     renderUltimosMovimientos();
+    actualizarUsdHint();
   });
+  $("monto").addEventListener("input", actualizarUsdHint);
+  $("fecha").addEventListener("change", actualizarUsdHint);
   $("categoria").addEventListener("change", updateSubcategorias);
   $("categoria").addEventListener("input", updateSubcategorias);
   $("toggleCuota").addEventListener("click", () => {
