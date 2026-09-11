@@ -1040,8 +1040,6 @@ function renderConciliacion(selectedKey) {
     (m) => (m.estado || "").trim() === "Pagado" && m.subcategoria !== "Incobrable"
   );
   const esperado = pagados.reduce((s, m) => s + m.monto, 0);
-  const ingresos = pagados.filter((m) => m.tipo === "Ingreso").reduce((s, m) => s + Math.abs(m.monto), 0);
-  const gastos = pagados.filter((m) => m.tipo === "Gasto").reduce((s, m) => s + Math.abs(m.monto), 0);
   const diff = saldoReal - esperado;
 
   const abs = Math.abs(diff);
@@ -1050,22 +1048,25 @@ function renderConciliacion(selectedKey) {
   else if (abs < 1000) { badge = "diferencia menor"; clase = "badge-warning"; }
   else { badge = "revisar"; clase = "badge-critical"; }
 
-  const fila = (etiqueta, valor, extra = "") =>
-    `<div class="category-row-top" style="padding:7px 0;font-size:13.5px;${extra}">
-      <span style="color:var(--text-secondary)">${etiqueta}</span>
-      <span class="cat-amounts">${valor}</span>
-    </div>`;
-
+  // Solo lo esencial: saldo contable vs. saldo real, y la diferencia — sin el
+  // desglose histórico de ingresos/gastos (era ruido, el dato que importa es
+  // la comparación final) ni el párrafo largo de explicación.
   body.innerHTML = `
-    ${fila("Ingresos pagados (histórico)", `<span class="income">${fmtCLP(ingresos)}</span>`)}
-    ${fila("− Gastos pagados (histórico)", `<span class="expense">${fmtCLP(gastos)}</span>`)}
-    ${fila("= Saldo contable", `<strong>${fmtCLP(esperado)}</strong>`, "border-top:1px solid var(--grid);")}
-    ${fila("Saldo real en cuentas", `<strong>${fmtCLP(saldoReal)}</strong>`)}
-    <div class="category-row-top" style="padding:11px 0 4px;border-top:1px solid var(--grid);font-size:14.5px;">
-      <span style="font-weight:700;">Diferencia</span>
-      <span class="cat-amounts" style="font-weight:800;">
-        <span class="badge ${clase}" style="margin-right:7px;">${badge}</span>${fmtCLP(diff)}
+    <div style="display:flex;gap:16px;">
+      <div style="flex:1;">
+        <div class="stat-label">Saldo contable</div>
+        <div class="stat-value" style="font-size:19px;">${fmtCLP(esperado)}</div>
+      </div>
+      <div style="flex:1;">
+        <div class="stat-label">Saldo real</div>
+        <div class="stat-value" style="font-size:19px;">${fmtCLP(saldoReal)}</div>
+      </div>
+    </div>
+    <div class="category-row-top" style="padding:12px 0 0;margin-top:12px;border-top:1px solid var(--grid);">
+      <span style="font-weight:700;font-size:13.5px;">
+        <span class="badge ${clase}" style="margin-right:7px;">${badge}</span>Diferencia
       </span>
+      <span class="cat-amounts" style="font-weight:800;">${fmtCLP(diff)}</span>
     </div>
     ${abs >= 1
       ? `<div style="margin-top:14px;">
@@ -1082,12 +1083,7 @@ function renderConciliacion(selectedKey) {
                 </div>`
              : ""}
          </div>`
-      : ""}
-    <div style="font-size:11.5px;color:var(--text-muted);margin-top:12px;line-height:1.55;">
-      Compara <strong>todo lo pagado desde siempre</strong> contra el saldo real de tus cuentas.
-      Lo que está "por pagar" no cuenta: aún no sale del banco. Cuando pagas una tarjeta,
-      esos movimientos entran acá automáticamente.
-    </div>`;
+      : ""}`;
 
   /** Registra un movimiento que absorbe exactamente la diferencia y deja la
    * conciliación en cero. diff > 0 -> entró plata sin registrar (Ingreso);
