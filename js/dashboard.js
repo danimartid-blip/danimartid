@@ -879,7 +879,6 @@ function renderPanelCobrar(panel, grupo, totalCobrar) {
       );
       await loadData();
       renderStats($("monthSelect").value);
-      renderPatrimonio();
     } catch (err) {
       console.error(err);
       btn.disabled = false;
@@ -1006,7 +1005,6 @@ function renderPanelPago(panel, grupo, total) {
 
       await loadData();
       renderStats($("monthSelect").value);
-      renderPatrimonio();
     } catch (err) {
       console.error(err);
       btn.disabled = false;
@@ -1112,7 +1110,6 @@ function renderConciliacion(selectedKey) {
       );
       await loadData();
       renderStats(selectedKey);
-      renderPatrimonio();
     } catch (err) {
       console.error(err);
       btn.disabled = false;
@@ -1143,21 +1140,6 @@ function renderConciliacion(selectedKey) {
     );
   }
 
-}
-
-function renderPatrimonio() {
-  const total = cuentas.reduce((s, c) => s + c.saldo, 0);
-  $("statPatrimonio").textContent = fmtCLP(total);
-  const mini = $("accountsMini");
-  mini.innerHTML = "";
-  const top = [...cuentas].sort((a, b) => b.saldo - a.saldo).slice(0, 4);
-  for (const c of top) {
-    const row = document.createElement("div");
-    row.className = "category-row-top";
-    row.style.padding = "4px 0";
-    row.innerHTML = `<span style="color:var(--text-secondary)">${c.nombre}</span><span class="cat-amounts">${fmtCLP(c.saldo)}</span>`;
-    mini.appendChild(row);
-  }
 }
 
 function renderTrend() {
@@ -1325,7 +1307,6 @@ async function init() {
   const defaultKey = populateMonthSelect();
   renderStats(defaultKey);
   renderTrend();
-  renderPatrimonio();
 
   $("monthSelect").addEventListener("change", (e) => renderStats(e.target.value));
 
