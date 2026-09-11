@@ -435,7 +435,7 @@ function buildSubcategoryRow(cat, sub, subMonto, selectedKey) {
       <span style="color:var(--text-secondary)">${sub}</span>
       <span class="cat-amounts">${fmtCLP(subMonto)} <span class="meta">${hasMeta ? `de ${fmtCLP(subMeta)}` : "sin ppto."}</span></span>
     </div>
-    <div class="bar-track bar-track-sub">${hasMeta ? `<div class="bar-fill${pct > 100 ? " over" : ""}" style="width:${Math.min(pct, 100)}%"></div>` : ""}</div>
+    <div class="bar-track bar-track-sub">${hasMeta ? `<div class="bar-fill${pct > 100 ? " over" : ""}" data-w="${Math.min(pct, 100)}" style="width:0%"></div>` : ""}</div>
     <div class="sub-detail" id="${rowId}" hidden></div>`;
 }
 
@@ -546,7 +546,7 @@ function renderStats(selectedKey) {
         <span class="cat-name">${cat}</span>
         <span class="cat-amounts">${fmtCLP(monto)} <span class="meta">${hasMeta ? `de ${fmtCLP(meta)}` : "sin ppto."}</span></span>
       </div>
-      <div class="bar-track">${hasMeta ? `<div class="bar-fill${pct > 100 ? " over" : ""}" style="width:${Math.min(pct, 100)}%"></div>` : ""}</div>
+      <div class="bar-track">${hasMeta ? `<div class="bar-fill${pct > 100 ? " over" : ""}" data-w="${Math.min(pct, 100)}" style="width:0%"></div>` : ""}</div>
       <div class="cat-detail" hidden>
         <div>${sparkline}</div>
         <div style="margin-top:10px;">${subRows || '<div class="skeleton no-spinner" style="padding:8px 0;">Sin movimientos este mes</div>'}</div>
@@ -558,13 +558,14 @@ function renderStats(selectedKey) {
     wireSubcategoryToggles(row);
     list.appendChild(row);
   }
+  Anim.barras(list); // las barras crecen de 0 a su ancho al cargar
 
   // Por pagar (global, no filtrado por mes). Neto CON SIGNO: un "por pagar"
   // positivo es plata que te deben (un préstamo que hiciste) y descuenta deuda,
   // no la suma. Sumarlo en absoluto inflaba la deuda al doble de esos montos.
   const pendientes = movimientos.filter((m) => m.estado === "Por pagar");
-  const porPagar = -pendientes.reduce((s, m) => s + m.monto, 0);
-  $("statPorPagar").textContent = fmtCLP(porPagar);
+  // Los totales de "Por pagar / Por cobrar" los escribe renderPorPagarDetail,
+  // que los separa bien (ver ahí el neteo por grupo).
 
   // Liquidez ("¿cuánto tengo de verdad disponible AHORA?") solo descuenta lo
   // que vence pronto (próximos ~40 días) — una cuota futura (ej. la 2 de 3,
@@ -612,7 +613,7 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal, totalCuentas, po
 
   // "Saldo actual" es siempre el mismo dato, sin el mes adelante (el mes ya
   // está en el filtro de arriba). Su fórmula vive detrás del "?".
-  saldoValor.textContent = fmtCLP(liquidezReal);
+  Anim.numero(saldoValor, liquidezReal, fmtCLP);
   saldoValor.className = "stat-value hero-num-sm " + (liquidezReal >= 0 ? "income" : "expense");
   $("infoSaldo").textContent =
     `Suma de los saldos de tus cuentas (${fmtCLP(totalCuentas)}) menos lo "Por pagar" que vence pronto, ` +
@@ -626,7 +627,7 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal, totalCuentas, po
     .reduce((s, m) => s + m.monto, 0);
   const setPatrimonio = (base) => {
     const pl = base + futurosNetos;
-    statPl.textContent = fmtCLP(pl);
+    Anim.numero(statPl, pl, fmtCLP);
     statPl.className = "stat-value hero-num " + (pl >= 0 ? "income" : "expense");
     $("infoPatrimonio").textContent =
       `La Liquidez de arriba (${fmtCLP(base)}) más el neto de todo lo que ya está registrado en meses ` +
@@ -639,7 +640,7 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal, totalCuentas, po
   const hayPpto = ingresoPpto !== 0 || gastoPpto !== 0;
 
   const mostrarReal = (nota) => {
-    grande.textContent = fmtCLP(liquidezReal);
+    Anim.numero(grande, liquidezReal, fmtCLP);
     grande.className = "stat-value hero-num " + (liquidezReal >= 0 ? "income" : "expense");
     estado.textContent = nota;
     estado.hidden = false;
@@ -669,7 +670,7 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal, totalCuentas, po
   const resultadoPpto = ingresoPpto - gastoPpto;
   const liquidezPpto = liquidezAntesDelMes + resultadoPpto;
 
-  grande.textContent = fmtCLP(liquidezPpto);
+  Anim.numero(grande, liquidezPpto, fmtCLP);
   grande.className = "stat-value hero-num " + (liquidezPpto >= 0 ? "income" : "expense");
   estado.hidden = true;
 
@@ -710,8 +711,8 @@ function renderPorPagarDetail(pendientes) {
   const sumaPagar = (movs) => netosPorGrupo(movs).filter((n) => n > 0).reduce((s, n) => s + n, 0);
   const sumaCobrar = (movs) => netosPorGrupo(movs).filter((n) => n < 0).reduce((s, n) => s + Math.abs(n), 0);
 
-  $("statPorPagar").textContent = fmtCLP(sumaPagar(pendientes));
-  $("statPorCobrar").textContent = fmtCLP(sumaCobrar(pendientes));
+  Anim.numero($("statPorPagar"), sumaPagar(pendientes), fmtCLP);
+  Anim.numero($("statPorCobrar"), sumaCobrar(pendientes), fmtCLP);
 
   const porFecha = {};
   for (const m of pendientes) {
@@ -1102,18 +1103,18 @@ function renderConciliacion(selectedKey) {
     <div style="display:flex;gap:16px;">
       <div style="flex:1;">
         <div class="stat-label">Saldo contable</div>
-        <div class="stat-value" style="font-size:19px;">${fmtCLP(esperado)}</div>
+        <div class="stat-value" style="font-size:19px;" id="concContable">$0</div>
       </div>
       <div style="flex:1;">
         <div class="stat-label">Saldo real</div>
-        <div class="stat-value" style="font-size:19px;">${fmtCLP(saldoReal)}</div>
+        <div class="stat-value" style="font-size:19px;" id="concReal">$0</div>
       </div>
     </div>
     <div class="category-row-top" style="padding:12px 0 0;margin-top:12px;border-top:1px solid var(--grid);">
       <span style="font-weight:700;font-size:13.5px;">
         <span class="badge ${clase}" style="margin-right:7px;">${badge}</span>Diferencia
       </span>
-      <span class="cat-amounts" style="font-weight:800;">${fmtCLP(diff)}</span>
+      <span class="cat-amounts" style="font-weight:800;" id="concDiff">$0</span>
     </div>
     ${abs >= 1
       ? `<div style="margin-top:14px;">
@@ -1131,6 +1132,10 @@ function renderConciliacion(selectedKey) {
              : ""}
          </div>`
       : ""}`;
+
+  Anim.numero($("concContable"), esperado, fmtCLP);
+  Anim.numero($("concReal"), saldoReal, fmtCLP);
+  Anim.numero($("concDiff"), diff, fmtCLP);
 
   /** Registra un movimiento que absorbe exactamente la diferencia y deja la
    * conciliación en cero. diff > 0 -> entró plata sin registrar (Ingreso);

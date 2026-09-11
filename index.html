@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202609102259">
+<link rel="stylesheet" href="css/styles.css?v=202609102305">
 </head>
 <body>
 
@@ -24,7 +24,7 @@
   <div id="dashboard" hidden>
     <div class="card card-hero">
       <div class="hero-grid">
-        <div class="hero-box">
+        <div class="hero-box hero-box-liquidez">
           <div class="hero-head">
             <span class="stat-label">Liquidez</span>
             <button type="button" class="info-btn" data-info="infoLiquidez" aria-label="Cómo se calcula la liquidez">?</button>
@@ -33,7 +33,7 @@
           <div class="hero-estado" id="liquidezEstado" hidden></div>
         </div>
 
-        <div class="hero-box">
+        <div class="hero-box hero-box-patrimonio">
           <div class="hero-head">
             <span class="stat-label">Patrimonio líquido</span>
             <button type="button" class="info-btn" data-info="infoPatrimonio" aria-label="Cómo se calcula el patrimonio líquido">?</button>
@@ -41,7 +41,7 @@
           <div class="stat-value hero-num" id="statPatrimonioLiquido">$0</div>
         </div>
 
-        <div class="hero-box hero-box-wide">
+        <div class="hero-box hero-box-saldo hero-box-wide">
           <div class="hero-head">
             <span class="stat-label">Saldo actual</span>
             <button type="button" class="info-btn" data-info="infoSaldo" aria-label="Cómo se calcula el saldo actual">?</button>
@@ -120,9 +120,10 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202609102259"></script>
+<script src="js/config.js?v=202609102305"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202609102259"></script>
-<script src="js/dashboard.js?v=202609102259"></script>
+<script src="js/sheets-auth.js?v=202609102305"></script>
+<script src="js/anim.js?v=202609102305"></script>
+<script src="js/dashboard.js?v=202609102305"></script>
 </body>
 </html>

@@ -193,7 +193,7 @@ header.topbar h1 {
 /* hero (liquidez + patrimonio líquido). Alineado a la izquierda y ocupando
  * todo el ancho: antes iba todo centrado y los costados quedaban vacíos. */
 .card-hero {
-  padding: 22px 18px 20px;
+  padding: 12px;
   background:
     radial-gradient(130% 110% at 0% 0%, var(--accent-soft) 0%, transparent 60%),
     var(--surface);
@@ -207,31 +207,38 @@ header.topbar h1 {
 .hero-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 8px;
 }
+/* Cada indicador con su propio tinte, para que se distingan de un vistazo y
+ * la ficha (la más importante del tablero) no sea tres cajas grises iguales. */
 .hero-box {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   min-width: 0;
-  padding: 12px 13px 13px;
+  padding: 14px 8px 15px;
   border-radius: 14px;
-  background: var(--surface-2);
+  background:
+    linear-gradient(158deg, color-mix(in srgb, var(--box-tint) 20%, var(--surface-2)) 0%, var(--surface-2) 72%);
+  border: 1px solid color-mix(in srgb, var(--box-tint) 24%, transparent);
 }
+.hero-box-liquidez { --box-tint: var(--accent); }
+.hero-box-patrimonio { --box-tint: var(--series-1); }
+.hero-box-saldo { --box-tint: var(--good, var(--income)); }
 .hero-box-wide { grid-column: 1 / -1; }
-.hero-box .hero-head { margin-bottom: 6px; justify-content: center; }
-.hero-box .stat-label { font-size: 10px; }
+.hero-box .hero-head { margin-bottom: 7px; justify-content: center; }
+.hero-box .stat-label { font-size: 9.5px; }
 .hero-num {
   margin-top: auto; /* los dos montos de arriba quedan alineados abajo */
-  font-size: clamp(18px, 6.4vw, 27px);
-  letter-spacing: -0.03em;
+  font-size: clamp(20px, 7.6vw, 32px);
+  letter-spacing: -0.035em;
   line-height: 1.1;
   white-space: nowrap;
 }
 .hero-num-sm {
-  font-size: clamp(16px, 5.2vw, 23px);
-  letter-spacing: -0.02em;
+  font-size: clamp(18px, 6.2vw, 27px);
+  letter-spacing: -0.03em;
   line-height: 1.1;
   white-space: nowrap;
 }

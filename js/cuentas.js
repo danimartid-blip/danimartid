@@ -47,7 +47,7 @@ let cuentas = []; // { row, nombre, saldo, fecha }
 
 function render() {
   const total = cuentas.reduce((s, c) => s + c.saldo, 0);
-  $("totalPatrimonio").textContent = fmtCLP(total);
+  Anim.numero($("totalPatrimonio"), total, fmtCLP);
 
   const list = $("accountList");
   list.innerHTML = "";
@@ -71,7 +71,7 @@ function render() {
           </div>
         </div>
         <div class="account-actions">
-          <div class="account-balance">${fmtCLP(c.saldo)}</div>
+          <div class="account-balance">$0</div>
           <button class="btn-secondary" data-edit="${c.row}">Actualizar</button>
         </div>
       </div>
@@ -80,6 +80,7 @@ function render() {
         <button class="btn-secondary" data-save="${c.row}">Guardar</button>
       </div>
     `;
+    Anim.numero(row.querySelector(".account-balance"), c.saldo, fmtCLP);
     list.appendChild(row);
   }
 
