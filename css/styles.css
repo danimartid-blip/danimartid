@@ -200,15 +200,38 @@ header.topbar h1 {
   border-color: var(--border-strong);
   box-shadow: var(--shadow-lg);
 }
-.stat-value-hero {
-  font-size: 38px;
-  letter-spacing: -0.035em;
-  line-height: 1.05;
+/* Grilla de la ficha: Liquidez y Patrimonio líquido arriba (mismo tamaño,
+ * lado a lado) y Saldo actual abajo ocupando el ancho de los dos. Los montos
+ * usan clamp() porque a 38px dos números de 7 cifras no entran uno al lado
+ * del otro en un celular — se achican solos según el ancho de pantalla. */
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
-.stat-value-hero-sm {
-  font-size: 23px;
+.hero-box {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 12px 13px 13px;
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+.hero-box-wide { grid-column: 1 / -1; }
+.hero-box .hero-head { margin-bottom: 6px; }
+.hero-box .stat-label { font-size: 10px; }
+.hero-num {
+  margin-top: auto; /* los dos montos de arriba quedan alineados abajo */
+  font-size: clamp(18px, 6.4vw, 27px);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.hero-num-sm {
+  font-size: clamp(16px, 5.2vw, 23px);
   letter-spacing: -0.02em;
   line-height: 1.1;
+  white-space: nowrap;
 }
 
 /* etiqueta + botón "?" en la misma línea */
@@ -257,29 +280,6 @@ header.topbar h1 {
   color: var(--text-muted);
   font-weight: 650;
   margin-top: 5px;
-}
-
-/* fila "etiqueta a la izquierda, monto a la derecha" (Saldo actual) */
-.hero-line {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 14px;
-}
-.hero-line .hero-head { margin-bottom: 0; }
-.hero-line-label { font-size: 12.5px; color: var(--text-secondary); font-weight: 650; }
-.hero-line-value {
-  font-size: 15px;
-  font-weight: 750;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.015em;
-}
-
-.hero-divider {
-  height: 1px;
-  background: var(--grid);
-  margin: 18px 0 14px;
 }
 
 /* dos totales lado a lado (Por pagar / Por cobrar) */

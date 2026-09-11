@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202609102250">
+<link rel="stylesheet" href="css/styles.css?v=202609102254">
 </head>
 <body>
 
@@ -23,31 +23,36 @@
 
   <div id="dashboard" hidden>
     <div class="card card-hero">
-      <div class="hero-head">
-        <span class="stat-label">Liquidez</span>
-        <button type="button" class="info-btn" data-info="infoLiquidez" aria-label="Cómo se calcula la liquidez">?</button>
+      <div class="hero-grid">
+        <div class="hero-box">
+          <div class="hero-head">
+            <span class="stat-label">Liquidez</span>
+            <button type="button" class="info-btn" data-info="infoLiquidez" aria-label="Cómo se calcula la liquidez">?</button>
+          </div>
+          <div class="stat-value hero-num" id="statLiquidezPpto">$0</div>
+          <div class="hero-estado" id="liquidezEstado" hidden></div>
+        </div>
+
+        <div class="hero-box">
+          <div class="hero-head">
+            <span class="stat-label">Patrimonio líquido</span>
+            <button type="button" class="info-btn" data-info="infoPatrimonio" aria-label="Cómo se calcula el patrimonio líquido">?</button>
+          </div>
+          <div class="stat-value hero-num" id="statPatrimonioLiquido">$0</div>
+        </div>
+
+        <div class="hero-box hero-box-wide">
+          <div class="hero-head">
+            <span class="stat-label">Saldo actual</span>
+            <button type="button" class="info-btn" data-info="infoSaldo" aria-label="Cómo se calcula el saldo actual">?</button>
+          </div>
+          <div class="stat-value hero-num-sm" id="liquidezRealValue">$0</div>
+        </div>
       </div>
-      <div class="stat-value stat-value-hero" id="statLiquidezPpto">$0</div>
-      <div class="hero-estado" id="liquidezEstado" hidden></div>
+
       <p class="hero-info" id="infoLiquidez" hidden></p>
-
-      <div class="hero-line">
-        <span class="hero-head">
-          <span class="hero-line-label">Saldo actual</span>
-          <button type="button" class="info-btn" data-info="infoSaldo" aria-label="Cómo se calcula el saldo actual">?</button>
-        </span>
-        <span class="hero-line-value" id="liquidezRealValue">$0</span>
-      </div>
-      <p class="hero-info" id="infoSaldo" hidden></p>
-
-      <div class="hero-divider"></div>
-
-      <div class="hero-head">
-        <span class="stat-label">Patrimonio líquido</span>
-        <button type="button" class="info-btn" data-info="infoPatrimonio" aria-label="Cómo se calcula el patrimonio líquido">?</button>
-      </div>
-      <div class="stat-value stat-value-hero-sm" id="statPatrimonioLiquido">$0</div>
       <p class="hero-info" id="infoPatrimonio" hidden></p>
+      <p class="hero-info" id="infoSaldo" hidden></p>
     </div>
 
     <div class="card" id="conciliacionCard">
@@ -115,9 +120,9 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202609102250"></script>
+<script src="js/config.js?v=202609102254"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202609102250"></script>
-<script src="js/dashboard.js?v=202609102250"></script>
+<script src="js/sheets-auth.js?v=202609102254"></script>
+<script src="js/dashboard.js?v=202609102254"></script>
 </body>
 </html>

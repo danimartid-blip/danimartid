@@ -613,7 +613,7 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal, totalCuentas, po
   // "Saldo actual" es siempre el mismo dato, sin el mes adelante (el mes ya
   // está en el filtro de arriba). Su fórmula vive detrás del "?".
   saldoValor.textContent = fmtCLP(liquidezReal);
-  saldoValor.className = "hero-line-value " + (liquidezReal >= 0 ? "income" : "expense");
+  saldoValor.className = "stat-value hero-num-sm " + (liquidezReal >= 0 ? "income" : "expense");
   $("infoSaldo").textContent =
     `Suma de los saldos de tus cuentas (${fmtCLP(totalCuentas)}) menos lo "Por pagar" que vence pronto, ` +
     `dentro de los próximos 40 días (${fmtCLP(porPagarPronto)}). El total completo de deuda, venza cuando venza, ` +
@@ -627,7 +627,7 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal, totalCuentas, po
   const setPatrimonio = (base) => {
     const pl = base + futurosNetos;
     statPl.textContent = fmtCLP(pl);
-    statPl.className = "stat-value stat-value-hero-sm " + (pl >= 0 ? "income" : "expense");
+    statPl.className = "stat-value hero-num " + (pl >= 0 ? "income" : "expense");
     $("infoPatrimonio").textContent =
       `La Liquidez de arriba (${fmtCLP(base)}) más el neto de todo lo que ya está registrado en meses ` +
       `posteriores al que estás mirando (${fmtCLP(futurosNetos)}): cuotas cargadas de antemano, cobros ` +
@@ -640,7 +640,7 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal, totalCuentas, po
 
   const mostrarReal = (nota) => {
     grande.textContent = fmtCLP(liquidezReal);
-    grande.className = "stat-value stat-value-hero " + (liquidezReal >= 0 ? "income" : "expense");
+    grande.className = "stat-value hero-num " + (liquidezReal >= 0 ? "income" : "expense");
     estado.textContent = nota;
     estado.hidden = false;
     $("infoLiquidez").textContent =
@@ -670,7 +670,7 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal, totalCuentas, po
   const liquidezPpto = liquidezAntesDelMes + resultadoPpto;
 
   grande.textContent = fmtCLP(liquidezPpto);
-  grande.className = "stat-value stat-value-hero " + (liquidezPpto >= 0 ? "income" : "expense");
+  grande.className = "stat-value hero-num " + (liquidezPpto >= 0 ? "income" : "expense");
   estado.hidden = true;
 
   $("infoLiquidez").textContent =
