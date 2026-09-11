@@ -860,6 +860,15 @@ select.native, input[type="month"] {
 }
 .rank-valor .rank-meta { margin-top: 0; }
 
+/* dos números lado a lado dentro de una card (margen al mes / al año) */
+.ahorro-hero { display: flex; gap: 16px; }
+.ahorro-hero > div { flex: 1; min-width: 0; }
+
+/* oportunidad de ahorro: nombre + margen, barra proporcional y el contexto */
+.ahorro-op { padding: 9px 0; border-bottom: 1px solid var(--grid); }
+.ahorro-op:last-child { border-bottom: none; }
+.ahorro-op .rank-meta { margin-top: 5px; }
+
 /* ahorro mes a mes */
 .ahorro-row { padding: 7px 0; }
 .ahorro-top {

@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202609102334">
+<link rel="stylesheet" href="css/styles.css?v=202609102351">
 </head>
 <body>
 
@@ -43,6 +43,44 @@
           <div class="hero-estado" id="promedioDetalle"></div>
         </div>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">¿Dónde puedo ahorrar?</div>
+      <p class="card-sub">
+        No es un recorte inventado: es la diferencia entre lo que gastás en promedio
+        y <strong>tu propio mejor mes</strong> en cada cosa. Ya lo lograste antes, al menos una vez.
+      </p>
+      <div class="ahorro-hero">
+        <div>
+          <div class="stat-label">Margen al mes</div>
+          <div class="stat-value hero-num-sm income" id="ahorroMes">$0</div>
+        </div>
+        <div>
+          <div class="stat-label">Al año</div>
+          <div class="stat-value hero-num-sm income" id="ahorroAnio">$0</div>
+        </div>
+      </div>
+      <div id="ahorroLista" style="margin-top:14px;"></div>
+      <p class="card-sub" id="ahorroNota" style="margin:12px 0 0;"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Suscripciones</div>
+      <p class="card-sub">Lo que se paga solo todos los meses. Suele ser lo último que uno revisa.</p>
+      <div id="suscripciones"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">¿Se disparó algo?</div>
+      <p class="card-sub">Subcategorías del último mes cerrado muy por encima de su propio promedio.</p>
+      <div id="alertas"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Tus rituales</div>
+      <p class="card-sub">Las compras que repetís con el mismo nombre. Chicas de a una, pesadas de a muchas.</p>
+      <div id="rituales"></div>
     </div>
 
     <div class="card">
@@ -117,10 +155,10 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202609102334"></script>
+<script src="js/config.js?v=202609102351"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202609102334"></script>
-<script src="js/anim.js?v=202609102334"></script>
-<script src="js/habitos.js?v=202609102334"></script>
+<script src="js/sheets-auth.js?v=202609102351"></script>
+<script src="js/anim.js?v=202609102351"></script>
+<script src="js/habitos.js?v=202609102351"></script>
 </body>
 </html>

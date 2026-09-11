@@ -118,6 +118,46 @@ function gastoPorSub(meses) {
   return [...gasto.values()];
 }
 
+/** Categorías donde "ahorrar" no tiene sentido: son compromisos ya tomados
+ * (deuda, diezmo, seguros, plata para la mamá) o directamente no son consumo
+ * (ahorro). Se muestran igual en el resto de la página, pero quedan fuera del
+ * cálculo de margen — sugerir "gastá menos en el dividendo" sería ruido. */
+const CAT_COMPROMETIDA = new Set([
+  "dividendos", "pago prestamo", "diezmo", "seguros", "mamá", "mama",
+  "ahorro", "intereses", "costo tarjetas", "ofrendas",
+]);
+
+/** Gasto bruto por subcategoría y por mes: { "cat|||sub": { categoria, sub, porMes } } */
+function gastoPorSubYMes(meses) {
+  const out = new Map();
+  for (const m of movimientos) {
+    if (m.tipo !== "Gasto" || esRuido(m) || !meses.includes(monthKey(m))) continue;
+    const k = `${m.categoria}|||${normSub(m.subcategoria)}`;
+    const e = out.get(k) || { categoria: m.categoria, sub: m.subcategoria || "(sin subcategoría)", porMes: {} };
+    e.porMes[monthKey(m)] = (e.porMes[monthKey(m)] || 0) + Math.abs(m.monto);
+    out.set(k, e);
+  }
+  return [...out.values()];
+}
+
+/** Margen de ahorro por subcategoría: promedio mensual menos el mes más barato
+ * en que sí hubo gasto. Solo para lo recurrente — en algo que pasó una vez, el
+ * "mejor mes" no significa nada. */
+function oportunidadesDeAhorro(meses) {
+  const minMeses = Math.max(3, meses.length - 2);
+  return gastoPorSubYMes(meses)
+    .filter((e) => !CAT_COMPROMETIDA.has(normSub(e.categoria)))
+    .map((e) => {
+      const valores = meses.map((k) => e.porMes[k] || 0);
+      const conGasto = valores.filter((v) => v > 0);
+      const prom = valores.reduce((a, b) => a + b, 0) / meses.length;
+      const mejor = conGasto.length ? Math.min(...conGasto) : 0;
+      return { ...e, mesesCon: conGasto.length, prom, mejor, margen: prom - mejor };
+    })
+    .filter((e) => e.mesesCon >= minMeses && e.margen > 5000)
+    .sort((a, b) => b.margen - a.margen);
+}
+
 function filaRanking(e, valorHtml, subtexto) {
   return `<div class="rank-row">
     <div class="rank-info">
@@ -146,6 +186,120 @@ function render() {
   Anim.numero($("statIngreso"), ingresoTotal - reembolsoTotal, fmtCLP);
   Anim.numero($("statPromedioDia"), gastoTotal / dias, fmtCLP);
   $("promedioDetalle").textContent = `por día · ${dias} días · ${meses.length} ${meses.length === 1 ? "mes" : "meses"}`;
+
+  // ---- ¿Dónde puedo ahorrar? ----
+  const oportunidades = oportunidadesDeAhorro(meses);
+  const margenTotal = oportunidades.reduce((s, e) => s + e.margen, 0);
+  Anim.numero($("ahorroMes"), margenTotal, fmtCLP);
+  Anim.numero($("ahorroAnio"), margenTotal * 12, fmtCLP);
+  const maxMargen = oportunidades.length ? oportunidades[0].margen : 1;
+  $("ahorroLista").innerHTML = oportunidades.length
+    ? oportunidades
+        .slice(0, 8)
+        .map(
+          (e) => `<div class="ahorro-op">
+            <div class="ahorro-top">
+              <span>${e.categoria} <span class="rank-sub">${e.sub}</span></span>
+              <span class="cat-amounts income">${fmtCLP(e.margen)}</span>
+            </div>
+            <div class="bar-track"><div class="bar-fill" data-w="${Math.round((e.margen / maxMargen) * 100)}" style="width:0%"></div></div>
+            <div class="rank-meta">gastás ${fmtCLP(e.prom)} al mes · tu mejor mes fue ${fmtCLP(e.mejor)}</div>
+          </div>`
+        )
+        .join("")
+    : '<div class="skeleton no-spinner">Sin gastos recurrentes suficientes para comparar</div>';
+  $("ahorroNota").textContent =
+    "Quedan fuera del cálculo las categorías que ya son compromisos o no son consumo: " +
+    "dividendos, préstamo, diezmo, ofrendas, seguros, Mamá, ahorro, intereses y costo de tarjetas.";
+
+  // ---- Suscripciones ----
+  const minSusc = Math.max(3, Math.ceil(meses.length * 0.6));
+  const suscripciones = gastoPorSubYMes(meses)
+    .filter((e) => normSub(e.categoria) === "plataformas")
+    .map((e) => {
+      const valores = meses.map((k) => e.porMes[k] || 0);
+      return { ...e, mesesCon: valores.filter((v) => v > 0).length, mensual: valores.reduce((a, b) => a + b, 0) / meses.length };
+    })
+    .filter((e) => e.mesesCon >= minSusc)
+    .sort((a, b) => b.mensual - a.mensual);
+  const totalSusc = suscripciones.reduce((s, e) => s + e.mensual, 0);
+  $("suscripciones").innerHTML = suscripciones.length
+    ? `<div class="ahorro-hero" style="margin-bottom:12px;">
+         <div><div class="stat-label">Al mes</div><div class="stat-value" style="font-size:21px;">${fmtCLP(totalSusc)}</div></div>
+         <div><div class="stat-label">Al año</div><div class="stat-value" style="font-size:21px;">${fmtCLP(totalSusc * 12)}</div></div>
+       </div>` +
+      suscripciones
+        .map(
+          (e) => `<div class="rank-row">
+            <div class="rank-info">
+              <div class="rank-name">${e.sub}</div>
+              <div class="rank-meta">${e.mesesCon} de ${meses.length} meses</div>
+            </div>
+            <div class="rank-valor"><strong>${fmtCLP(e.mensual)}</strong><div class="rank-meta">al mes</div></div>
+          </div>`
+        )
+        .join("")
+    : '<div class="skeleton no-spinner">Sin suscripciones recurrentes detectadas</div>';
+
+  // ---- ¿Se disparó algo? ----
+  // Se compara el último mes CERRADO (el en curso está a medias y siempre
+  // parecería que bajó todo) contra el promedio de los 3 anteriores.
+  const cerrados = meses.filter((k) => k !== mesActual());
+  const ultimo = cerrados[cerrados.length - 1];
+  const previos = cerrados.slice(-4, -1);
+  const alertas = ultimo && previos.length
+    ? gastoPorSubYMes(meses)
+        .map((e) => {
+          const actual = e.porMes[ultimo] || 0;
+          const base = previos.reduce((s, k) => s + (e.porMes[k] || 0), 0) / previos.length;
+          return { ...e, actual, base, delta: actual - base };
+        })
+        .filter((e) => e.base > 10000 && e.actual > e.base * 1.3)
+        .sort((a, b) => b.delta - a.delta)
+        .slice(0, 6)
+    : [];
+  const [, moUlt] = (ultimo || "-").split("-");
+  $("alertas").innerHTML = alertas.length
+    ? alertas
+        .map(
+          (e) => `<div class="rank-row">
+            <div class="rank-info">
+              <div class="rank-name">${e.categoria} <span class="rank-sub">${e.sub}</span></div>
+              <div class="rank-meta">${MESES[Number(moUlt)]}: ${fmtCLP(e.actual)} · antes venía en ${fmtCLP(e.base)}</div>
+            </div>
+            <div class="rank-valor"><strong class="expense">+${fmtCLP(e.delta)}</strong></div>
+          </div>`
+        )
+        .join("")
+    : `<div class="skeleton no-spinner">Nada se disparó${ultimo ? ` en ${MESES[Number(moUlt)]}` : ""} — todo dentro de lo habitual</div>`;
+
+  // ---- Tus rituales ----
+  const porDetalle = new Map();
+  for (const m of enPeriodo) {
+    if (m.tipo !== "Gasto" || !m.detalle) continue;
+    const k = normSub(m.detalle);
+    const e = porDetalle.get(k) || { txt: m.detalle, n: 0, monto: 0 };
+    e.n++;
+    e.monto += Math.abs(m.monto);
+    porDetalle.set(k, e);
+  }
+  const rituales = [...porDetalle.values()]
+    .filter((e) => e.n >= Math.max(4, meses.length))
+    .sort((a, b) => b.monto - a.monto)
+    .slice(0, 8);
+  $("rituales").innerHTML = rituales.length
+    ? rituales
+        .map(
+          (e) => `<div class="rank-row">
+            <div class="rank-info">
+              <div class="rank-name">${e.txt}</div>
+              <div class="rank-meta">${e.n} veces · ${fmtCLP(e.monto / e.n)} cada vez</div>
+            </div>
+            <div class="rank-valor"><strong>${fmtCLP(e.monto / meses.length)}</strong><div class="rank-meta">al mes</div></div>
+          </div>`
+        )
+        .join("")
+    : '<div class="skeleton no-spinner">Sin compras repetidas suficientes</div>';
 
   // ---- Tasa de ahorro mes a mes ----
   const ahorroEl = $("tasaAhorro");
