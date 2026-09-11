@@ -27,6 +27,22 @@ function showToast(msg, isError = false) {
   setTimeout(() => (t.className = "toast"), 2200);
 }
 
+/** Colores de marca reales, para que cada ficha se sienta "del banco que es"
+ * en vez de todas iguales. Coincide por palabra clave (case-insensitive) en
+ * el nombre de la cuenta — un banco nuevo que no matchea ninguna cae en el
+ * look neutro de siempre (ver --bank-bg/--bank-fg con fallback en el CSS). */
+const BANK_BRANDS = [
+  { match: /chile/i, bg: "#0039A6", fg: "#ffffff" }, // Banco de Chile — azul
+  { match: /santander/i, bg: "#EC0000", fg: "#ffffff" }, // Santander — rojo
+  { match: /scoti/i, bg: "#D52B1E", fg: "#ffffff" }, // Scotiabank — rojo
+  { match: /mercado\s?pago|meli/i, bg: "#3483FA", fg: "#ffffff" }, // Mercado Pago — azul
+  { match: /mach/i, bg: "#E6007E", fg: "#ffffff" }, // Mach (BCI) — rosado
+  { match: /efectivo|cash/i, bg: "#2E7D46", fg: "#ffffff" }, // efectivo — verde billete
+];
+function brandFor(nombre) {
+  return BANK_BRANDS.find((b) => b.match.test(nombre)) || null;
+}
+
 let cuentas = []; // { row, nombre, saldo, fecha }
 
 function render() {
@@ -40,7 +56,11 @@ function render() {
     const stale = days != null && days > 30;
     const row = document.createElement("div");
     row.className = "account-row";
-    row.style.display = "block";
+    const brand = brandFor(c.nombre);
+    if (brand) {
+      row.style.setProperty("--bank-bg", brand.bg);
+      row.style.setProperty("--bank-fg", brand.fg);
+    }
     row.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
