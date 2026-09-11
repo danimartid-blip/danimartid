@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hábitos — Finanzas</title>
+<meta name="theme-color" content="#0e7c6b">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/styles.css?v=202609102334">
+</head>
+<body>
+
+<header class="topbar">
+  <h1>Hábitos</h1>
+  <select id="periodoSelect" class="native">
+    <option value="3">3 meses</option>
+    <option value="6" selected>6 meses</option>
+    <option value="12">12 meses</option>
+  </select>
+</header>
+
+<div class="container">
+
+  <div id="loadingSkeleton" class="skeleton" hidden>Analizando tus movimientos…</div>
+
+  <div id="content" hidden>
+
+    <div class="card card-hero">
+      <div class="hero-grid">
+        <div class="hero-box hero-box-liquidez">
+          <div class="hero-head"><span class="stat-label">Gasto del período</span></div>
+          <div class="stat-value hero-num expense" id="statGasto">$0</div>
+        </div>
+        <div class="hero-box hero-box-patrimonio">
+          <div class="hero-head"><span class="stat-label">Ingreso del período</span></div>
+          <div class="stat-value hero-num income" id="statIngreso">$0</div>
+        </div>
+        <div class="hero-box hero-box-saldo hero-box-wide">
+          <div class="hero-head"><span class="stat-label">Gastás en promedio</span></div>
+          <div class="stat-value hero-num-sm" id="statPromedioDia">$0</div>
+          <div class="hero-estado" id="promedioDetalle"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Cuánto te queda cada mes</div>
+      <p class="card-sub">Ingresos menos gastos del mes, sobre el ingreso. Es lo que de verdad ahorraste.</p>
+      <div id="tasaAhorro"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Tu piso mensual</div>
+      <p class="card-sub">Cuánto de tu gasto se repite todos los meses (el que no podés bajar de un día para otro) y cuánto es variable.</p>
+      <div class="split-bar"><div class="split-fijo" id="splitFijo"></div></div>
+      <div class="split-legend">
+        <span><span class="legend-dot" style="background:var(--series-1)"></span>Fijo <strong id="montoFijo">$0</strong> <span id="pctFijo" class="meta"></span></span>
+        <span><span class="legend-dot" style="background:var(--surface-2)"></span>Variable <strong id="montoVariable">$0</strong> <span id="pctVariable" class="meta"></span></span>
+      </div>
+      <div id="listaFijos" style="margin-top:14px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Dónde más comprás</div>
+      <p class="card-sub">Por cantidad de compras, no por monto — acá se ven los hábitos.</p>
+      <div id="rankingFrecuencia"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Dónde más gastás</div>
+      <p class="card-sub">Por monto. Suele mandar lo que ya está comprometido (deudas, cuentas).</p>
+      <div id="rankingMonto"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Gastos hormiga</div>
+      <p class="card-sub">Compras bajo $5.000.</p>
+      <div id="hormiga"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Qué día comprás</div>
+      <p class="card-sub">Cantidad de compras por día de la semana.</p>
+      <div id="porDia"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Reembolsos y costo de tarjetas</div>
+      <div id="extras"></div>
+    </div>
+
+  </div>
+</div>
+
+<nav class="tabbar">
+  <a href="index.html">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 14.5l3.5-4.5 3 2.8L21 6"/></svg>
+    Dashboard
+  </a>
+  <a href="registro.html">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8.2v7.6M8.2 12h7.6"/></svg>
+    Registrar
+  </a>
+  <a href="presupuesto.html">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3.2V12l6.2 6.2"/></svg>
+    Presupuesto
+  </a>
+  <a href="cuentas.html">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10.5h18"/><circle cx="16.5" cy="14.8" r="1.15"/></svg>
+    Cuentas
+  </a>
+  <a href="habitos.html" class="active">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
+    Hábitos
+  </a>
+</nav>
+
+<script src="js/config.js?v=202609102334"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="js/sheets-auth.js?v=202609102334"></script>
+<script src="js/anim.js?v=202609102334"></script>
+<script src="js/habitos.js?v=202609102334"></script>
+</body>
+</html>

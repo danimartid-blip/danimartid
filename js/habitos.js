@@ -1,0 +1,308 @@
+const $ = (id) => document.getElementById(id);
+
+const MESES = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+const HORMIGA_TOPE = 5000;
+
+function fmtCLP(n) {
+  const sign = n < 0 ? "-" : "";
+  return sign + "$" + Math.round(Math.abs(n)).toLocaleString("es-CL");
+}
+
+let movimientos = [];
+let periodoMeses = 6;
+
+function monthKey(m) {
+  return `${m.año}-${String(m.mes).padStart(2, "0")}`;
+}
+function mesActual() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+function normSub(s) {
+  return (s || "").trim().toLowerCase();
+}
+
+/** Filas que no son consumo real y ensucian cualquier ranking: cargos
+ * duplicados que después se reversaron, castigos de incobrables y los ajustes
+ * de conciliación. Se sacan de TODAS las métricas de esta página. */
+const SUB_RUIDO = new Set(["duplicado", "incobrable", "ajuste"]);
+const CAT_RUIDO = new Set(["ajuste conciliación", "ajuste conciliacion"]);
+function esRuido(m) {
+  return SUB_RUIDO.has(normSub(m.subcategoria)) || CAT_RUIDO.has(normSub(m.categoria));
+}
+
+/** Acepta "3/9/2026" y "2026-09-03". Mediodía para que el día de la semana no
+ * se corra por zona horaria. */
+function parseFecha(raw) {
+  const s = String(raw || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split("-").map(Number);
+    return new Date(y, m - 1, d, 12);
+  }
+  if (s.includes("/")) {
+    const [d, m, y] = s.split("/").map(Number);
+    if (d && m && y) return new Date(y, m - 1, d, 12);
+  }
+  return null;
+}
+
+function mesesDelPeriodo() {
+  const todos = [...new Set(movimientos.map(monthKey))].filter((k) => k <= mesActual()).sort();
+  return todos.slice(-periodoMeses);
+}
+
+/** Días transcurridos del período: los meses completos enteros, y el mes en
+ * curso solo hasta hoy (si no, el promedio diario sale siempre bajo). */
+function diasDelPeriodo(meses) {
+  const hoy = new Date();
+  return meses.reduce((s, k) => {
+    const [y, m] = k.split("-").map(Number);
+    if (k === mesActual()) return s + hoy.getDate();
+    return s + new Date(y, m, 0).getDate();
+  }, 0);
+}
+
+/** Gasto por subcategoría, NETO de reembolso, y cuántas compras fueron.
+ * El neteo sigue la convención de siempre: un Ingreso con la misma
+ * categoría+subcategoría descuenta del gasto (ej. Trabajo/Starbuck), y en una
+ * categoría "de a par" (un solo bucket de gasto y uno de ingreso, con
+ * etiquetas distintas, ej. Pago Prestamo / Cobro prestamo) también.
+ * OJO: el CONTEO no se netea — si compraste el café y te lo devolvieron, la
+ * compra igual pasó, y eso es justo lo que mide esta página. */
+function gastoPorSub(meses) {
+  const enPeriodo = movimientos.filter((m) => meses.includes(monthKey(m)) && !esRuido(m));
+
+  const gasto = new Map(); // "categoria|||normSub" -> { categoria, sub, bruto, n, meses:Set }
+  for (const m of enPeriodo) {
+    if (m.tipo !== "Gasto") continue;
+    const k = `${m.categoria}|||${normSub(m.subcategoria)}`;
+    const e = gasto.get(k) || { categoria: m.categoria, sub: m.subcategoria || "(sin subcategoría)", bruto: 0, reembolso: 0, n: 0, meses: new Set() };
+    e.bruto += Math.abs(m.monto);
+    e.n++;
+    e.meses.add(monthKey(m));
+    gasto.set(k, e);
+  }
+
+  const ingreso = new Map(); // mismo key -> monto
+  const ingresoPorCat = new Map(); // categoria -> Map(normSub -> monto)
+  for (const m of enPeriodo) {
+    if (m.tipo !== "Ingreso") continue;
+    const k = `${m.categoria}|||${normSub(m.subcategoria)}`;
+    ingreso.set(k, (ingreso.get(k) || 0) + Math.abs(m.monto));
+    if (!ingresoPorCat.has(m.categoria)) ingresoPorCat.set(m.categoria, new Map());
+    const porSub = ingresoPorCat.get(m.categoria);
+    porSub.set(normSub(m.subcategoria), (porSub.get(normSub(m.subcategoria)) || 0) + Math.abs(m.monto));
+  }
+
+  // Match exacto (misma etiqueta en ambos lados)
+  for (const [k, e] of gasto) {
+    if (ingreso.has(k)) e.reembolso += ingreso.get(k);
+  }
+  // "De a par": la categoría tiene UN solo bucket de gasto y UN solo bucket de
+  // ingreso, con etiquetas distintas — no hay ambigüedad sobre qué netea qué.
+  const gastoPorCat = new Map();
+  for (const e of gasto.values()) {
+    if (!gastoPorCat.has(e.categoria)) gastoPorCat.set(e.categoria, []);
+    gastoPorCat.get(e.categoria).push(e);
+  }
+  for (const [cat, buckets] of gastoPorCat) {
+    const ing = ingresoPorCat.get(cat);
+    if (!ing || buckets.length !== 1 || ing.size !== 1) continue;
+    const [subIng, montoIng] = [...ing][0];
+    if (normSub(buckets[0].sub) === subIng) continue; // ya lo tomó el match exacto
+    buckets[0].reembolso += montoIng;
+  }
+
+  for (const e of gasto.values()) e.neto = e.bruto - e.reembolso;
+  return [...gasto.values()];
+}
+
+function filaRanking(e, valorHtml, subtexto) {
+  return `<div class="rank-row">
+    <div class="rank-info">
+      <div class="rank-name">${e.categoria} <span class="rank-sub">${e.sub}</span></div>
+      <div class="rank-meta">${subtexto}</div>
+    </div>
+    <div class="rank-valor">${valorHtml}</div>
+  </div>`;
+}
+
+function render() {
+  const meses = mesesDelPeriodo();
+  if (meses.length === 0) return;
+
+  const enPeriodo = movimientos.filter((m) => meses.includes(monthKey(m)) && !esRuido(m));
+  const subs = gastoPorSub(meses);
+
+  const gastoTotal = subs.reduce((s, e) => s + e.neto, 0);
+  const ingresoTotal = enPeriodo
+    .filter((m) => m.tipo === "Ingreso")
+    .reduce((s, m) => s + Math.abs(m.monto), 0);
+  const reembolsoTotal = subs.reduce((s, e) => s + e.reembolso, 0);
+  const dias = diasDelPeriodo(meses);
+
+  Anim.numero($("statGasto"), gastoTotal, fmtCLP);
+  Anim.numero($("statIngreso"), ingresoTotal - reembolsoTotal, fmtCLP);
+  Anim.numero($("statPromedioDia"), gastoTotal / dias, fmtCLP);
+  $("promedioDetalle").textContent = `por día · ${dias} días · ${meses.length} ${meses.length === 1 ? "mes" : "meses"}`;
+
+  // ---- Tasa de ahorro mes a mes ----
+  const ahorroEl = $("tasaAhorro");
+  ahorroEl.innerHTML = meses
+    .map((k) => {
+      const delMes = enPeriodo.filter((m) => monthKey(m) === k);
+      const ing = delMes.filter((m) => m.tipo === "Ingreso").reduce((s, m) => s + Math.abs(m.monto), 0);
+      const gas = delMes.filter((m) => m.tipo === "Gasto").reduce((s, m) => s + Math.abs(m.monto), 0);
+      const neto = ing - gas;
+      const pct = ing ? Math.round((neto / ing) * 100) : 0;
+      const [y, mo] = k.split("-");
+      const incompleto = k === mesActual();
+      const ancho = Math.min(Math.abs(pct), 100);
+      return `<div class="ahorro-row">
+        <div class="ahorro-top">
+          <span>${MESES[Number(mo)]} ${y}${incompleto ? ' <span class="badge badge-muted">mes en curso</span>' : ""}</span>
+          <span class="cat-amounts ${neto >= 0 ? "income" : "expense"}">${fmtCLP(neto)} · ${pct}%</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill${neto < 0 ? " over" : ""}" data-w="${ancho}" style="width:0%"></div></div>
+      </div>`;
+    })
+    .join("");
+
+  // ---- Fijo vs variable ----
+  const umbral = Math.max(2, meses.length - 1); // presente en casi todos los meses
+  const fijos = subs.filter((e) => e.meses.size >= umbral);
+  const montoFijo = fijos.reduce((s, e) => s + e.neto, 0);
+  const montoVariable = gastoTotal - montoFijo;
+  const pctFijo = gastoTotal ? Math.round((montoFijo / gastoTotal) * 100) : 0;
+  $("splitFijo").style.width = `${pctFijo}%`;
+  $("montoFijo").textContent = fmtCLP(montoFijo);
+  $("montoVariable").textContent = fmtCLP(montoVariable);
+  $("pctFijo").textContent = `${pctFijo}%`;
+  $("pctVariable").textContent = `${100 - pctFijo}%`;
+  $("listaFijos").innerHTML =
+    `<div class="stat-label" style="margin-bottom:6px;">Los que se repiten todos los meses</div>` +
+    fijos
+      .sort((a, b) => b.neto - a.neto)
+      .slice(0, 8)
+      .map((e) => filaRanking(e, `<strong>${fmtCLP(e.neto / meses.length)}</strong><div class="rank-meta">al mes</div>`, `${e.meses.size} de ${meses.length} meses · ${e.n} compras`))
+      .join("");
+
+  // ---- Rankings ----
+  $("rankingFrecuencia").innerHTML = subs
+    .slice()
+    .sort((a, b) => b.n - a.n)
+    .slice(0, 10)
+    .map((e) => filaRanking(e, `<strong>${e.n}</strong><div class="rank-meta">compras</div>`, `ticket ${fmtCLP(e.bruto / e.n)} · total ${fmtCLP(e.neto)}`))
+    .join("");
+
+  $("rankingMonto").innerHTML = subs
+    .slice()
+    .sort((a, b) => b.neto - a.neto)
+    .slice(0, 10)
+    .map((e) => filaRanking(e, `<strong>${fmtCLP(e.neto)}</strong>`, `${e.n} compras · ticket ${fmtCLP(e.bruto / e.n)}`))
+    .join("");
+
+  // ---- Hormiga ----
+  const gastosPeriodo = enPeriodo.filter((m) => m.tipo === "Gasto");
+  const hormiga = gastosPeriodo.filter((m) => Math.abs(m.monto) < HORMIGA_TOPE);
+  const montoHormiga = hormiga.reduce((s, m) => s + Math.abs(m.monto), 0);
+  const brutoPeriodo = gastosPeriodo.reduce((s, m) => s + Math.abs(m.monto), 0);
+  const pctCompras = gastosPeriodo.length ? Math.round((hormiga.length / gastosPeriodo.length) * 100) : 0;
+  const pctMonto = brutoPeriodo ? Math.round((montoHormiga / brutoPeriodo) * 100) : 0;
+  $("hormiga").innerHTML = `
+    <div class="dual-stat">
+      <div>
+        <div class="stat-label">Compras chicas</div>
+        <div class="stat-value" style="font-size:21px;">${hormiga.length}</div>
+        <div class="rank-meta">${pctCompras}% de todas tus compras</div>
+      </div>
+      <div>
+        <div class="stat-label">Suman</div>
+        <div class="stat-value" style="font-size:21px;">${fmtCLP(montoHormiga)}</div>
+        <div class="rank-meta">${pctMonto}% de tu gasto</div>
+      </div>
+    </div>
+    <p class="card-sub" style="margin-top:12px;margin-bottom:0;">
+      ${pctMonto <= 5
+        ? "Son muchas compras pero poca plata: la fuga no está acá."
+        : "Acá sí hay plata: vale la pena mirarlo."}
+    </p>`;
+
+  // ---- Día de la semana ----
+  const porDia = Array.from({ length: 7 }, () => ({ n: 0, monto: 0 }));
+  for (const m of gastosPeriodo) {
+    const d = parseFecha(m.fecha);
+    if (!d) continue;
+    porDia[d.getDay()].n++;
+    porDia[d.getDay()].monto += Math.abs(m.monto);
+  }
+  const maxN = Math.max(...porDia.map((d) => d.n), 1);
+  const orden = [1, 2, 3, 4, 5, 6, 0]; // lunes primero
+  $("porDia").innerHTML = `<div class="spark spark-nested">${orden
+    .map((i) => {
+      const alto = Math.max(4, Math.round((porDia[i].n / maxN) * 100));
+      return `<div class="spark-col" title="${DIAS[i]}: ${porDia[i].n} compras · ${fmtCLP(porDia[i].monto)}">
+        <div class="spark-bar-slot"><div class="spark-bar" style="height:${alto}%"></div></div>
+        <div class="spark-label">${DIAS[i].slice(0, 3)}</div>
+      </div>`;
+    })
+    .join("")}</div>`;
+
+  // ---- Reembolsos y costo de tarjetas ----
+  const costoTarjetas = subs
+    .filter((e) => normSub(e.categoria) === "costo tarjetas")
+    .reduce((s, e) => s + e.neto, 0);
+  $("extras").innerHTML = `
+    <div class="rank-row">
+      <div class="rank-info">
+        <div class="rank-name">Te reembolsaron</div>
+        <div class="rank-meta">gastos que alguien te devolvió</div>
+      </div>
+      <div class="rank-valor"><strong class="income">${fmtCLP(reembolsoTotal)}</strong></div>
+    </div>
+    <div class="rank-row">
+      <div class="rank-info">
+        <div class="rank-name">Costo de tarjetas</div>
+        <div class="rank-meta">comisiones e intereses · ${gastoTotal ? ((costoTarjetas / gastoTotal) * 100).toFixed(1) : 0}% de tu gasto</div>
+      </div>
+      <div class="rank-valor"><strong class="expense">${fmtCLP(costoTarjetas)}</strong></div>
+    </div>`;
+
+  Anim.barras($("content"));
+}
+
+async function loadData() {
+  const rows = await window.SheetsApi.readRange("Movimientos!A2:N100000");
+  movimientos = rows
+    .map((r) => ({
+      fecha: r[0],
+      año: String(r[1] || "").trim(),
+      mes: String(r[2] || "").trim(),
+      tipo: r[3] || "",
+      categoria: r[4] || "",
+      subcategoria: r[5] || "",
+      medioPago: r[6] || "",
+      estado: r[7] || "",
+      monto: Number(r[8]) || 0,
+      detalle: r[9] || "",
+    }))
+    .filter((m) => m.fecha && m.categoria);
+}
+
+async function init() {
+  if (!window.SheetsAuth.requireAuthOrRedirect()) return;
+
+  $("loadingSkeleton").hidden = false;
+  await loadData();
+  $("loadingSkeleton").hidden = true;
+  $("content").hidden = false;
+  render();
+
+  $("periodoSelect").addEventListener("change", (e) => {
+    periodoMeses = Number(e.target.value);
+    render();
+  });
+}
+
+init();
