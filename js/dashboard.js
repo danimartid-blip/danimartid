@@ -164,10 +164,14 @@ function budgetForSubcategoria(mes, categoria, subcategoria, tipo = "Gasto") {
   return row ? row.monto : avg3Real(tipo, categoria, subcategoria, mes);
 }
 
-/** Sum across all of a categoria's subcategorias (explicit-or-average each), matching
- * the Presupuesto page's "category = sum of its subcategorias" rule. Null only when
- * the categoria has no subcategorias with any recent activity at all. */
-function budgetForCategoria(mes, categoria, tipo = "Gasto") {
+/** Subcategorías de una categoría/tipo que valen presupuesto: actividad real
+ * en los 3 meses previos, o ya tienen una fila fijada este mes — sin importar
+ * si YA tuvieron gasto real este mes puntual. Se usa tanto para sumar el total
+ * de la categoría (budgetForCategoria) como para, en el Dashboard, mostrar la
+ * subcategoría igual aunque este mes todavía no se haya cargado nada ("esto
+ * lo tenés presupuestado, todavía no lo pagaste"). Devuelve las etiquetas
+ * representativas (deduplicadas por normSub, ver montoRealNeto). */
+function subcategoriasConPresupuesto(mes, categoria, tipo = "Gasto") {
   const historyMonths = monthsBeforeExclusive(mes, 3);
   // Mapa normSub -> string representativa, para no contar "Pago prestamo" y
   // "Pago Prestamo" como dos subcategorías distintas (se sumaría el gasto 2 veces).
@@ -184,8 +188,16 @@ function budgetForCategoria(mes, categoria, tipo = "Gasto") {
       if (!subs.has(normSub(raw))) subs.set(normSub(raw), raw);
     }
   }
-  if (subs.size === 0) return null;
-  return [...subs.values()].reduce((s, sub) => s + budgetForSubcategoria(mes, categoria, sub, tipo), 0);
+  return [...subs.values()];
+}
+
+/** Sum across all of a categoria's subcategorias (explicit-or-average each), matching
+ * the Presupuesto page's "category = sum of its subcategorias" rule. Null only when
+ * the categoria has no subcategorias with any recent activity at all. */
+function budgetForCategoria(mes, categoria, tipo = "Gasto") {
+  const subs = subcategoriasConPresupuesto(mes, categoria, tipo);
+  if (subs.length === 0) return null;
+  return subs.reduce((s, sub) => s + budgetForSubcategoria(mes, categoria, sub, tipo), 0);
 }
 
 /** Every categoria of `tipo` worth proposing a budget for (recent activity or fijado). */
@@ -292,7 +304,13 @@ function populateMonthSelect() {
     opt.textContent = `${MESES[Number(m)]} ${y}`;
     select.appendChild(opt);
   }
-  return keys[0];
+  // Por defecto, el mes calendario de HOY — no "el más nuevo con movimientos",
+  // que ahora puede ser un mes futuro por las cuotas que ya quedan cargadas de
+  // antemano (ver el auto-generado de cuotas en registro.js). Ese mes futuro
+  // sigue en la lista para poder mirarlo, solo que ya no es el default.
+  const hoy = mesActual();
+  if (keys.includes(hoy)) return hoy;
+  return keys.find((k) => k <= hoy) || keys[0];
 }
 
 /** Gasto neto por mes de una categoría (y opcionalmente subcategoría, con el
@@ -483,6 +501,12 @@ function renderStats(selectedKey) {
     const subsConGasto = new Set(
       inMonth.filter((m) => m.tipo === "Gasto" && m.categoria === cat).map((m) => m.subcategoria || "(sin subcategoría)")
     );
+    // + las que tienen presupuesto (fijado o promedio) pero todavía sin gasto
+    // real este mes — para que se vea "esto lo tenés presupuestado, todavía
+    // no lo pagaste" en vez de desaparecer hasta que se cargue.
+    for (const sub of subcategoriasConPresupuesto(selectedKey, cat, "Gasto")) {
+      subsConGasto.add(sub || "(sin subcategoría)");
+    }
     const bySub = {};
     for (const sub of subsConGasto) {
       bySub[sub] = montoRealNeto("Gasto", cat, selectedKey, sub === "(sin subcategoría)" ? "" : sub);
