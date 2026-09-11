@@ -544,14 +544,6 @@ function renderStats(selectedKey) {
   const totalCuentas = cuentas.reduce((s, c) => s + c.saldo, 0);
   const liquidez = totalCuentas - porPagarPronto;
 
-  // Patrimonio líquido: la otra mirada, la de "si hoy tuviera que pagar TODO
-  // lo que debo" — saldo menos el total de Por pagar sin filtrar por fecha.
-  // Es un número fijo de HOY, no depende del mes que estés mirando.
-  const patrimonioLiquido = totalCuentas - porPagar;
-  const statPl = $("statPatrimonioLiquido");
-  statPl.textContent = fmtCLP(patrimonioLiquido);
-  statPl.className = "stat-value stat-value-hero-sm " + (patrimonioLiquido >= 0 ? "income" : "expense");
-
   renderLiquidezPresupuestada(selectedKey, liquidez);
   renderConciliacion(selectedKey);
   renderPorPagarDetail(pendientes);
@@ -559,13 +551,27 @@ function renderStats(selectedKey) {
 
 /** Protagonista: con cuánto terminarías si cumples el presupuesto del mes filtrado.
  * La liquidez real de hoy queda como dato secundario debajo. Es la mirada de
- * corto plazo (~40 días) — el total completo de deuda, sin filtrar por fecha,
- * se muestra aparte como "Patrimonio líquido" (ver renderStats). */
+ * corto plazo (~40 días). "Patrimonio líquido" (ver setPatrimonio abajo) es
+ * esa misma Liquidez, pero sumándole además todo lo que ya está registrado en
+ * meses FUTUROS al seleccionado (cuotas futuras, etc.) — así incorpora lo que
+ * ya sabés que viene, no solo lo del mes en curso. */
 function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
   const grande = $("statLiquidezPpto");
   const linea = $("liquidezRealLine");
   const label = $("liquidezPptoLabel");
+  const statPl = $("statPatrimonioLiquido");
   label.textContent = "Liquidez";
+
+  // monto ya viene con signo (Gasto negativo, Ingreso positivo) — sumarlo
+  // directo neta ingresos y gastos futuros de una.
+  const futurosNetos = movimientos
+    .filter((m) => monthKey(m) > selectedKey)
+    .reduce((s, m) => s + m.monto, 0);
+  const setPatrimonio = (base) => {
+    const pl = base + futurosNetos;
+    statPl.textContent = fmtCLP(pl);
+    statPl.className = "stat-value stat-value-hero-sm " + (pl >= 0 ? "income" : "expense");
+  };
 
   const ingresoPpto = totalBudgetForTipo("Ingreso", selectedKey);
   const gastoPpto = totalBudgetForTipo("Gasto", selectedKey);
@@ -576,6 +582,7 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
     grande.className = "stat-value stat-value-hero " + (liquidezReal >= 0 ? "income" : "expense");
     linea.textContent = "Sin presupuesto para este mes";
     linea.style.color = "var(--text-muted)";
+    setPatrimonio(liquidezReal);
     return;
   }
 
@@ -589,6 +596,7 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
     grande.className = "stat-value stat-value-hero " + (liquidezReal >= 0 ? "income" : "expense");
     linea.innerHTML = `${nombreMes} ya pasó`;
     linea.style.color = "var(--text-muted)";
+    setPatrimonio(liquidezReal);
     return;
   }
 
@@ -609,6 +617,8 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
 
   linea.innerHTML = `${nombreMes} · saldo actual: <strong>${fmtCLP(liquidezReal)}</strong>`;
   linea.style.color = liquidezReal >= 0 ? "var(--good)" : "var(--critical)";
+
+  setPatrimonio(liquidezPpto);
 }
 
 function renderPorPagarDetail(pendientes) {
