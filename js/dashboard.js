@@ -664,17 +664,18 @@ function renderIndicadores(selectedKey, d) {
     Anim.numero(el, valor, fmtCLP);
     el.className = `stat-value ${clase} ` + (valor >= 0 ? "income" : "expense");
   };
+  // Textos del "?": cortos y en chileno. Cada uno se lee como la fórmula dicha
+  // en voz alta, con los montos del mes que estás mirando.
   const fraseMes = proyecta
-    ? `Sobre eso se saca lo real que llevás de ${nombreMes} (${fmtCLP(realNeto)}) y se pone el presupuesto del mes ` +
-      `en su lugar: ingresos ${fmtCLP(ingresoPpto)} menos gastos ${fmtCLP(gastoPpto)} = ${fmtCLP(resultadoPpto)}.`
-    : `No se proyecta el mes: ${nota.toLowerCase()}.`;
+    ? `Después cambias lo que llevas del mes (${fmtCLP(realNeto)}) por el presupuesto completo ` +
+      `(${fmtCLP(ingresoPpto)} de ingresos menos ${fmtCLP(gastoPpto)} de gastos = ${fmtCLP(resultadoPpto)}).`
+    : `${nota}, así que no se proyecta nada.`;
 
   // 1) Saldo actual — la foto de hoy, sin proyectar nada.
   pintar($("liquidezRealValue"), saldoActual, "hero-num-sm");
   $("infoSaldo").textContent =
-    `La plata que tenés hoy, sin proyectar nada: la suma de tus cuentas (${fmtCLP(d.totalCuentas)}) menos lo por ` +
-    `pagar que vence dentro de los próximos 40 días (${fmtCLP(d.pagarPronto)}). Es el piso de los otros dos ` +
-    `indicadores. La deuda completa, venza cuando venza, está más abajo en "Por pagar".`;
+    `La plata que tienes hoy: tus cuentas (${fmtCLP(d.totalCuentas)}) menos lo que tienes que pagar en los ` +
+    `próximos 40 días (${fmtCLP(d.pagarPronto)}).`;
 
   // 2) Liquidez — corto plazo, ya presupuestado.
   const liquidez = saldoActual + ajuste;
@@ -682,18 +683,19 @@ function renderIndicadores(selectedKey, d) {
   const estado = $("liquidezEstado");
   estado.textContent = nota;
   estado.hidden = !nota;
-  $("infoLiquidez").textContent =
-    `Con cuánto disponible cerrás ${nombreMes} si cumplís el presupuesto. Parte del saldo actual ` +
-    `(${fmtCLP(saldoActual)}: cuentas menos la deuda que vence en los próximos 40 días — la de más allá todavía ` +
-    `no te toca pagarla). ${fraseMes}`;
+  $("infoLiquidez").textContent = proyecta
+    ? `Con cuánta plata terminas ${nombreMes} si cumples el presupuesto. Partes del saldo actual ` +
+      `(${fmtCLP(saldoActual)}). ${fraseMes}`
+    : `Igual al saldo actual (${fmtCLP(saldoActual)}): ${fraseMes}`;
 
   // 3) Patrimonio líquido — la foto completa, también presupuestada.
   const patrimonio = basePatrimonio + ajuste;
   pintar($("statPatrimonioLiquido"), patrimonio, "hero-num");
   $("infoPatrimonio").textContent =
-    `Lo mismo que la Liquidez, pero contando TODA la deuda (venza cuando venza, cuotas futuras incluidas) y todo ` +
-    `lo que te deben: cuentas ${fmtCLP(d.totalCuentas)} menos por pagar ${fmtCLP(d.pagarTotal)} más por cobrar ` +
-    `${fmtCLP(d.cobrarTotal)} = ${fmtCLP(basePatrimonio)}. ${fraseMes}`;
+    `Lo mismo, pero contando toda la deuda (venza cuando venza) y todo lo que te deben: ` +
+    `${fmtCLP(d.totalCuentas)} de tus cuentas, menos ${fmtCLP(d.pagarTotal)} que debes, más ` +
+    `${fmtCLP(d.cobrarTotal)} que te deben = ${fmtCLP(basePatrimonio)}. ` +
+    (proyecta ? "Después, el mismo cambio por presupuesto que la liquidez." : fraseMes);
 }
 
 /** "10-10-2026" -> "10 Oct 2026" (y "sin fecha" si no tiene). */
