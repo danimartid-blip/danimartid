@@ -190,54 +190,96 @@ header.topbar h1 {
 .income { color: var(--income); }
 .expense { color: var(--expense); }
 
-/* hero (liquidez neta) */
+/* hero (liquidez + patrimonio líquido). Alineado a la izquierda y ocupando
+ * todo el ancho: antes iba todo centrado y los costados quedaban vacíos. */
 .card-hero {
-  text-align: center;
-  padding: 26px 18px 22px;
+  padding: 22px 18px 20px;
   background:
-    radial-gradient(120% 100% at 50% 0%, var(--accent-soft) 0%, transparent 62%),
+    radial-gradient(130% 110% at 0% 0%, var(--accent-soft) 0%, transparent 60%),
     var(--surface);
   border-color: var(--border-strong);
   box-shadow: var(--shadow-lg);
 }
 .stat-value-hero {
-  font-size: 40px;
+  font-size: 38px;
   letter-spacing: -0.035em;
   line-height: 1.05;
 }
+.stat-value-hero-sm {
+  font-size: 23px;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
 
-/* segundo indicador dentro de la misma card-hero (Patrimonio líquido): más
- * chico que el protagonista, separado por una línea, pero igual de explícito
- * — dos números con su propio nombre, en vez de uno solo con texto de ayuda. */
+/* etiqueta + botón "?" en la misma línea */
+.hero-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+.hero-head .stat-label { margin-bottom: 0; }
+
+/* "?" — la fórmula de cada número queda a un toque, sin ocupar espacio fijo */
+.info-btn {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--text-muted);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.info-btn:active { background: var(--surface-2); color: var(--text); }
+.hero-info {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.55;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  animation: revealDown .2s var(--ease);
+}
+
+/* nota de estado bajo el número grande ("mes pasado", "sin presupuesto") */
+.hero-estado {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-weight: 650;
+  margin-top: 5px;
+}
+
+/* fila "etiqueta a la izquierda, monto a la derecha" (Saldo actual) */
+.hero-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+}
+.hero-line .hero-head { margin-bottom: 0; }
+.hero-line-label { font-size: 12.5px; color: var(--text-secondary); font-weight: 650; }
+.hero-line-value {
+  font-size: 15px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.015em;
+}
+
 .hero-divider {
   height: 1px;
   background: var(--grid);
   margin: 18px 0 14px;
-}
-.stat-value-hero-sm {
-  font-size: 24px;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-}
-.hero-sub-line {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 4px;
-  line-height: 1.4;
-}
-
-/* chip presupuestado bajo el hero */
-#liquidezRealLine {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 12px;
-  padding: 6px 13px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
-  font-size: 12.5px;
-  font-weight: 750;
-  font-variant-numeric: tabular-nums;
 }
 
 /* ecuación ingreso − gasto = balance */
@@ -745,6 +787,10 @@ select.native, input[type="month"] {
 /* ---------- gráfico ---------- */
 
 .chart-wrap { position: relative; }
+/* pan-y: el arrastre vertical sigue haciendo scroll de la página, pero el
+ * horizontal se lo queda el gráfico — así se puede deslizar el dedo por la
+ * línea y ver los montos de cada mes sin que la pantalla se mueva. */
+#trendChart { touch-action: pan-y; }
 .chart-tooltip {
   position: absolute; pointer-events: none;
   background: var(--text); color: var(--bg);

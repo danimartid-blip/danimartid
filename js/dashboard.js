@@ -593,7 +593,7 @@ function renderStats(selectedKey) {
   const totalCuentas = cuentas.reduce((s, c) => s + c.saldo, 0);
   const liquidez = totalCuentas - porPagarPronto;
 
-  renderLiquidezPresupuestada(selectedKey, liquidez);
+  renderLiquidezPresupuestada(selectedKey, liquidez, totalCuentas, porPagarPronto);
   renderConciliacion(selectedKey);
   renderPorPagarDetail(pendientes);
 }
@@ -604,12 +604,20 @@ function renderStats(selectedKey) {
  * esa misma Liquidez, pero sumándole además todo lo que ya está registrado en
  * meses FUTUROS al seleccionado (cuotas futuras, etc.) — así incorpora lo que
  * ya sabés que viene, no solo lo del mes en curso. */
-function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
+function renderLiquidezPresupuestada(selectedKey, liquidezReal, totalCuentas, porPagarPronto) {
   const grande = $("statLiquidezPpto");
-  const linea = $("liquidezRealLine");
-  const label = $("liquidezPptoLabel");
+  const estado = $("liquidezEstado");
+  const saldoValor = $("liquidezRealValue");
   const statPl = $("statPatrimonioLiquido");
-  label.textContent = "Liquidez";
+
+  // "Saldo actual" es siempre el mismo dato, sin el mes adelante (el mes ya
+  // está en el filtro de arriba). Su fórmula vive detrás del "?".
+  saldoValor.textContent = fmtCLP(liquidezReal);
+  saldoValor.className = "hero-line-value " + (liquidezReal >= 0 ? "income" : "expense");
+  $("infoSaldo").textContent =
+    `Suma de los saldos de tus cuentas (${fmtCLP(totalCuentas)}) menos lo "Por pagar" que vence pronto, ` +
+    `dentro de los próximos 40 días (${fmtCLP(porPagarPronto)}). El total completo de deuda, venza cuando venza, ` +
+    `está más abajo en "Por pagar (pendiente)".`;
 
   // monto ya viene con signo (Gasto negativo, Ingreso positivo) — sumarlo
   // directo neta ingresos y gastos futuros de una.
@@ -620,34 +628,34 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
     const pl = base + futurosNetos;
     statPl.textContent = fmtCLP(pl);
     statPl.className = "stat-value stat-value-hero-sm " + (pl >= 0 ? "income" : "expense");
+    $("infoPatrimonio").textContent =
+      `La Liquidez de arriba (${fmtCLP(base)}) más el neto de todo lo que ya está registrado en meses ` +
+      `posteriores al que estás mirando (${fmtCLP(futurosNetos)}): cuotas cargadas de antemano, cobros ` +
+      `agendados, etc. Es la mirada de "contando todo lo que ya sé que viene".`;
   };
 
   const ingresoPpto = totalBudgetForTipo("Ingreso", selectedKey);
   const gastoPpto = totalBudgetForTipo("Gasto", selectedKey);
   const hayPpto = ingresoPpto !== 0 || gastoPpto !== 0;
 
-  if (!hayPpto) {
+  const mostrarReal = (nota) => {
     grande.textContent = fmtCLP(liquidezReal);
     grande.className = "stat-value stat-value-hero " + (liquidezReal >= 0 ? "income" : "expense");
-    linea.textContent = "Sin presupuesto para este mes";
-    linea.style.color = "var(--text-muted)";
+    estado.textContent = nota;
+    estado.hidden = false;
+    $("infoLiquidez").textContent =
+      `Acá se muestra tu saldo actual tal cual (cuentas menos lo por pagar que vence pronto), sin proyección: ${nota.toLowerCase()}.`;
     setPatrimonio(liquidezReal);
-    return;
-  }
+  };
+
+  if (!hayPpto) return mostrarReal("Sin presupuesto para este mes");
 
   const [y, mo] = selectedKey.split("-");
   const nombreMes = `${MESES[Number(mo)]} ${y}`;
 
   // Un mes pasado no se puede "proyectar": la liquidez real de hoy ya incluye
   // todo lo que vino después. Mostramos la real y lo decimos.
-  if (selectedKey < mesActual()) {
-    grande.textContent = fmtCLP(liquidezReal);
-    grande.className = "stat-value stat-value-hero " + (liquidezReal >= 0 ? "income" : "expense");
-    linea.innerHTML = `${nombreMes} ya pasó`;
-    linea.style.color = "var(--text-muted)";
-    setPatrimonio(liquidezReal);
-    return;
-  }
+  if (selectedKey < mesActual()) return mostrarReal(`${nombreMes} ya pasó`);
 
   // Clave: la liquidez real ya trae los movimientos reales del mes (los pagados
   // bajaron el saldo, los por pagar subieron la deuda). Si le sumáramos el
@@ -663,9 +671,12 @@ function renderLiquidezPresupuestada(selectedKey, liquidezReal) {
 
   grande.textContent = fmtCLP(liquidezPpto);
   grande.className = "stat-value stat-value-hero " + (liquidezPpto >= 0 ? "income" : "expense");
+  estado.hidden = true;
 
-  linea.innerHTML = `${nombreMes} · saldo actual: <strong>${fmtCLP(liquidezReal)}</strong>`;
-  linea.style.color = liquidezReal >= 0 ? "var(--good)" : "var(--critical)";
+  $("infoLiquidez").textContent =
+    `Con cuánto cerrás ${nombreMes} si cumplís el presupuesto. Al saldo actual (${fmtCLP(liquidezReal)}) se le ` +
+    `quita lo real que ya pasó este mes (${fmtCLP(realIngresos - realGastos)}) y se le aplica el neto presupuestado: ` +
+    `ingresos ${fmtCLP(ingresoPpto)} menos gastos ${fmtCLP(gastoPpto)} = ${fmtCLP(resultadoPpto)}.`;
 
   setPatrimonio(liquidezPpto);
 }
@@ -1237,10 +1248,6 @@ function renderTrend() {
     })
     .join("");
 
-  const hitAreas = keys
-    .map((k, i) => `<rect x="${xOf(i) - stepX / 2}" y="0" width="${stepX}" height="${padTop + plotH}" fill="transparent" data-i="${i}"/>`)
-    .join("");
-
   svg.innerHTML = `
     <defs>
       <linearGradient id="gradIng" x1="0" y1="0" x2="0" y2="1">
@@ -1261,7 +1268,6 @@ function renderTrend() {
     <circle id="dotIng" r="4" fill="${incomeColor}" stroke="var(--surface)" stroke-width="2" opacity="0"/>
     <circle id="dotGas" r="4" fill="${expenseColor}" stroke="var(--surface)" stroke-width="2" opacity="0"/>
     ${labels}
-    ${hitAreas}
   `;
 
   const crosshair = svg.querySelector("#crosshair");
@@ -1296,12 +1302,37 @@ function renderTrend() {
     dotGas.setAttribute("opacity", "0");
   };
 
-  svg.querySelectorAll("rect[data-i]").forEach((rect) => {
-    const i = Number(rect.dataset.i);
-    rect.addEventListener("pointerenter", (e) => showTip(i, e.clientX));
-    rect.addEventListener("pointermove", (e) => showTip(i, e.clientX));
+  /** Mes más cercano al dedo/mouse, calculado desde la X de pantalla. En vez
+   * de un listener por cada zona, va uno solo en el SVG: en el celular, al
+   * apoyar el dedo el navegador "captura" el puntero en el elemento donde
+   * empezó, así que los listeners por zona nunca se enteraban de que el dedo
+   * se movió a otro mes — había que levantar y volver a tocar. */
+  const indiceEnX = (clientX) => {
+    const rect = svg.getBoundingClientRect();
+    const xView = ((clientX - rect.left) / rect.width) * w;
+    let mejor = 0;
+    let mejorDist = Infinity;
+    for (let i = 0; i < keys.length; i++) {
+      const d = Math.abs(xOf(i) - xView);
+      if (d < mejorDist) { mejorDist = d; mejor = i; }
+    }
+    return mejor;
+  };
+  const seguirPuntero = (e) => showTip(indiceEnX(e.clientX), e.clientX);
+
+  svg.addEventListener("pointerdown", (e) => {
+    svg.setPointerCapture?.(e.pointerId); // el arrastre sigue llegando acá aunque salga del hit area
+    seguirPuntero(e);
   });
-  svg.addEventListener("pointerleave", hideTip);
+  svg.addEventListener("pointermove", (e) => {
+    // Mouse: seguir siempre. Dedo: solo mientras está apoyado y arrastrando.
+    if (e.pointerType === "mouse" || e.buttons > 0 || svg.hasPointerCapture?.(e.pointerId)) seguirPuntero(e);
+  });
+  // Al levantar el dedo el valor queda visible para poder leerlo; con el mouse
+  // se esconde al salir del gráfico, como antes.
+  svg.addEventListener("pointerleave", (e) => {
+    if (e.pointerType === "mouse") hideTip();
+  });
 }
 
 async function loadData() {
@@ -1343,6 +1374,15 @@ async function init() {
     const detail = $("porPagarDetail");
     detail.hidden = !detail.hidden;
     $("porPagarToggle").textContent = detail.hidden ? "Ver detalle por banco/tarjeta ▾" : "Ocultar ▴";
+  });
+
+  // Cada "?" abre/cierra la explicación de SU número (el texto lo llena
+  // renderLiquidezPresupuestada, con los montos reales del mes mirado).
+  document.querySelectorAll(".info-btn[data-info]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const panel = $(btn.dataset.info);
+      panel.hidden = !panel.hidden;
+    });
   });
 }
 
