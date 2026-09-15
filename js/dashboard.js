@@ -131,10 +131,14 @@ function montoRealNeto(tipo, categoria, mes, subcategoria, anchorMes = mes) {
   // sin este filtro, CUALQUIER subcategoría de Ingreso devolvía el total de
   // toda la categoría (ej. "Cuenta remunerada" mostraba lo mismo que
   // "Sueldo"), inflando el presupuesto de Ingreso al sumar cada subcategoría.
+  // Los que son reembolso de un Gasto (Dividendo, Préstamo, Trabajo/Starbuck...)
+  // se excluyen: ya se restaron del lado del Gasto, contarlos también acá
+  // los duplicaría y los mostraría como si fueran ingreso nuevo.
   let total = 0;
   for (const m of movimientos) {
     if (m.categoria !== categoria || monthKey(m) !== mes || m.tipo !== tipo) continue;
     if (subcategoria !== undefined && normSub(m.subcategoria) !== normSub(subcategoria)) continue;
+    if (esMovReembolso(m, anchorMes)) continue;
     total += Math.abs(m.monto);
   }
   return total;
@@ -165,6 +169,21 @@ function esReembolsoDeGasto(categoria, subcategoria, mesesRelevantes) {
   const gastoBucket = singleBucket(categoria, mesesRelevantes, "Gasto");
   const ingresoBucket = singleBucket(categoria, mesesRelevantes, "Ingreso");
   return gastoBucket !== null && ingresoBucket !== null && ingresoBucket === sub;
+}
+
+/** Azúcar sobre esReembolsoDeGasto con la ventana de 4 meses ya armada
+ * (anchorMes fijo, mismo criterio que gastoMonthlyBreakdown). */
+function esSubcatReembolso(categoria, subcategoria, anchorMes) {
+  return esReembolsoDeGasto(categoria, subcategoria, [...monthsBeforeExclusive(anchorMes, 3), anchorMes]);
+}
+
+/** Un movimiento de Ingreso que es reembolso de un Gasto — para excluirlo de la
+ * apertura "Ingresos" del Dashboard (ver montoRealNeto y buildCategoryList).
+ * Ya está restado del lado del Gasto; mostrarlo TAMBIÉN como Ingreso aparte
+ * (ej. Dividendo, Préstamo, Trabajo) confunde: parece plata nueva y en
+ * realidad es la vuelta de un gasto que ya se contó. */
+function esMovReembolso(m, anchorMes) {
+  return m.tipo === "Ingreso" && esSubcatReembolso(m.categoria, m.subcategoria, anchorMes);
 }
 
 /** Budgeted amount for one categoria+subcategoria: explicit override if fijado,
@@ -347,12 +366,16 @@ function monthlyTotals(categoria, subSentinel) {
 
 /** Igual que monthlyTotals pero de un solo tipo, sin restar el otro lado — lo
  * que necesita el trend de una categoría de Ingreso (Sueldo, etc.): ahí no hay
- * nada que netear, solo mostrar cómo vino entrando mes a mes. */
-function monthlyTotalsTipo(tipo, categoria, subSentinel) {
+ * nada que netear, solo mostrar cómo vino entrando mes a mes. Para Ingreso,
+ * anchorMes fija (mismo criterio que montoRealNeto) qué cuenta como reembolso
+ * de un Gasto y se excluye — si no, el trend mostraría más plata de la que
+ * realmente entró como ingreso nuevo. */
+function monthlyTotalsTipo(tipo, categoria, subSentinel, anchorMes) {
   const out = {};
   for (const m of movimientos) {
     if (m.tipo !== tipo || m.categoria !== categoria) continue;
     if (subSentinel !== undefined && (m.subcategoria || "(sin subcategoría)") !== subSentinel) continue;
+    if (tipo === "Ingreso" && anchorMes !== undefined && esMovReembolso(m, anchorMes)) continue;
     const key = monthKey(m);
     out[key] = (out[key] || 0) + Math.abs(m.monto);
   }
@@ -477,7 +500,7 @@ function wireSubcategoryToggles(scope) {
         }
         const sparkline = buildSparklineHTML(
           monthsBackFrom(key, 6),
-          tipo === "Gasto" ? monthlyTotals(cat, sub) : monthlyTotalsTipo("Ingreso", cat, sub)
+          tipo === "Gasto" ? monthlyTotals(cat, sub) : monthlyTotalsTipo("Ingreso", cat, sub, key)
         );
         const items = movimientos
           .filter(
@@ -517,7 +540,13 @@ function buildCategoryList(tipo, selectedKey, inMonth) {
   const containerId = tipo === "Gasto" ? "categoryList" : "categoryListIngreso";
   const totalId = tipo === "Gasto" ? "totalGastoMes" : "totalIngresoMes";
 
-  const categoriasConMov = new Set(inMonth.filter((m) => m.tipo === tipo).map((m) => m.categoria));
+  // Del lado Ingreso, un movimiento que es reembolso de un Gasto no cuenta como
+  // "hay movimiento acá" — si no, categorías enteramente reembolso (Dividendo,
+  // Préstamo, Trabajo) aparecían en "Ingresos" con su reembolso del mes, como si
+  // fuera plata nueva, cuando ya está restada del lado del Gasto.
+  const categoriasConMov = new Set(
+    inMonth.filter((m) => m.tipo === tipo && !(tipo === "Ingreso" && esMovReembolso(m, selectedKey))).map((m) => m.categoria)
+  );
   for (const cat of categoriasForTipo(tipo, selectedKey)) {
     const meta = budgetForCategoria(selectedKey, cat, tipo);
     if (meta !== null && meta > 0) categoriasConMov.add(cat);
@@ -544,17 +573,21 @@ function buildCategoryList(tipo, selectedKey, inMonth) {
 
     const sparkline = buildTrendLineHTML(
       monthsBackFrom(selectedKey, 6),
-      tipo === "Gasto" ? monthlyTotals(cat) : monthlyTotalsTipo("Ingreso", cat)
+      tipo === "Gasto" ? monthlyTotals(cat) : monthlyTotalsTipo("Ingreso", cat, undefined, selectedKey)
     );
 
-    // Subcategorías de esta categoría, en el mes seleccionado.
+    // Subcategorías de esta categoría, en el mes seleccionado (mismo criterio
+    // de excluir reembolsos del lado Ingreso que arriba).
     const subsConMov = new Set(
-      inMonth.filter((m) => m.tipo === tipo && m.categoria === cat).map((m) => m.subcategoria || "(sin subcategoría)")
+      inMonth
+        .filter((m) => m.tipo === tipo && m.categoria === cat && !(tipo === "Ingreso" && esMovReembolso(m, selectedKey)))
+        .map((m) => m.subcategoria || "(sin subcategoría)")
     );
     // + las que tienen presupuesto (fijado o promedio) pero todavía sin
     // movimiento real este mes — para que se vea "esto lo tenés presupuestado,
     // todavía no lo cargaste" en vez de desaparecer hasta que se cargue.
     for (const sub of subcategoriasConPresupuesto(selectedKey, cat, tipo)) {
+      if (tipo === "Ingreso" && esSubcatReembolso(cat, sub, selectedKey)) continue;
       subsConMov.add(sub || "(sin subcategoría)");
     }
     const bySub = {};
