@@ -345,6 +345,20 @@ function monthlyTotals(categoria, subSentinel) {
   return out;
 }
 
+/** Igual que monthlyTotals pero de un solo tipo, sin restar el otro lado — lo
+ * que necesita el trend de una categoría de Ingreso (Sueldo, etc.): ahí no hay
+ * nada que netear, solo mostrar cómo vino entrando mes a mes. */
+function monthlyTotalsTipo(tipo, categoria, subSentinel) {
+  const out = {};
+  for (const m of movimientos) {
+    if (m.tipo !== tipo || m.categoria !== categoria) continue;
+    if (subSentinel !== undefined && (m.subcategoria || "(sin subcategoría)") !== subSentinel) continue;
+    const key = monthKey(m);
+    out[key] = (out[key] || 0) + Math.abs(m.monto);
+  }
+  return out;
+}
+
 /** Línea de tendencia compacta (área + línea) para el nivel de CATEGORÍA — el
  * resumen "cómo se movió esto en general" al pinchar una categoría. Distinta
  * a propósito de las mini-barras de subcategoría (buildSparklineHTML): al ser
@@ -418,10 +432,10 @@ function buildSparklineHTML(sixMonths, totalsByMonth) {
 const escapeAttr = (s) => String(s).replace(/"/g, "&quot;");
 
 /** A clickable subcategory row; its own 6-month sparkline + transaction list build lazily on first click. */
-function buildSubcategoryRow(cat, sub, subMonto, selectedKey) {
-  const rowId = `sub-${cat}-${sub}`.replace(/[^a-zA-Z0-9]/g, "");
+function buildSubcategoryRow(cat, sub, subMonto, selectedKey, tipo = "Gasto") {
+  const rowId = `sub-${cat}-${sub}-${tipo}`.replace(/[^a-zA-Z0-9]/g, "");
   const subReal = sub === "(sin subcategoría)" ? "" : sub;
-  const subMeta = budgetForSubcategoria(selectedKey, cat, subReal);
+  const subMeta = budgetForSubcategoria(selectedKey, cat, subReal, tipo);
   // Nota: la apertura de gasto+reembolso (bruto/reembolso/recibido-o-no) ya no
   // se muestra acá como resumen — vive en el detalle que se abre al pinchar la
   // fila (wireSubcategoryToggles ya incluye ahí los movimientos del reembolso
@@ -431,7 +445,7 @@ function buildSubcategoryRow(cat, sub, subMonto, selectedKey) {
   const hasMeta = subMeta !== null && subMeta > 0;
   const pct = hasMeta ? Math.round((subMonto / subMeta) * 100) : null;
   return `
-    <div class="category-row-top cat-clickable sub-clickable" data-cat="${escapeAttr(cat)}" data-sub="${escapeAttr(sub)}" data-key="${selectedKey}" data-target="${rowId}" style="padding:8px 0;font-size:13px;">
+    <div class="category-row-top cat-clickable sub-clickable" data-cat="${escapeAttr(cat)}" data-sub="${escapeAttr(sub)}" data-key="${selectedKey}" data-tipo="${tipo}" data-target="${rowId}" style="padding:8px 0;font-size:13px;">
       <span style="color:var(--text-secondary)">${sub}</span>
       <span class="cat-amounts">${fmtCLP(subMonto)} <span class="meta">${hasMeta ? `de ${fmtCLP(subMeta)}` : "sin ppto."}</span></span>
     </div>
@@ -448,22 +462,27 @@ function wireSubcategoryToggles(scope) {
       detail.hidden = !detail.hidden;
       if (willOpen && !detail.dataset.loaded) {
         detail.dataset.loaded = "1";
-        const { cat, sub, key } = el.dataset;
+        const { cat, sub, key, tipo = "Gasto" } = el.dataset;
         const subReal = sub === "(sin subcategoría)" ? "" : sub;
+
+        // Del lado Gasto se netea contra el reembolso pareado (ver montoRealNeto),
+        // así que el detalle también incluye esos Ingresos, para que se vea CONTRA
+        // QUÉ se está netando el total de arriba (la subcategoría del reembolso
+        // puede tener otra etiqueta, ej. Cobro prestamo vs Pago Prestamo). Un
+        // Ingreso nunca se netea, así que su detalle es solo sus propios movimientos.
+        const subsAMostrar = new Set([normSub(subReal)]);
+        if (tipo === "Gasto") {
+          const reembolso = reembolsoInfoFor(cat, subReal, key);
+          if (reembolso) subsAMostrar.add(normSub(reembolso.label));
+        }
         const sparkline = buildSparklineHTML(
           monthsBackFrom(key, 6),
-          monthlyTotals(cat, sub)
+          tipo === "Gasto" ? monthlyTotals(cat, sub) : monthlyTotalsTipo("Ingreso", cat, sub)
         );
-        // Incluye los reembolsos junto a los gastos, para que se vea CONTRA QUÉ
-        // se está netando el total de arriba — la subcategoría del reembolso
-        // pareado puede tener otra etiqueta (ej. Cobro prestamo vs Pago Prestamo).
-        const reembolso = reembolsoInfoFor(cat, subReal, key);
-        const subsAMostrar = new Set([normSub(subReal)]);
-        if (reembolso) subsAMostrar.add(normSub(reembolso.label));
         const items = movimientos
           .filter(
             (m) =>
-              (m.tipo === "Gasto" || m.tipo === "Ingreso") &&
+              (tipo === "Gasto" ? (m.tipo === "Gasto" || m.tipo === "Ingreso") : m.tipo === "Ingreso") &&
               m.categoria === cat &&
               subsAMostrar.has(normSub(m.subcategoria)) &&
               monthKey(m) === key
@@ -473,9 +492,9 @@ function wireSubcategoryToggles(scope) {
             (m) => `<div class="category-row-top" style="padding:5px 0;font-size:12px;">
               <span style="color:var(--text-muted)">
                 ${formatFechaCorta(m.fecha)} · ${m.detalle || "—"}
-                ${m.tipo === "Ingreso" ? '<span class="badge badge-good" style="margin-left:4px;">reembolso</span>' : ""}
+                ${tipo === "Gasto" && m.tipo === "Ingreso" ? '<span class="badge badge-good" style="margin-left:4px;">reembolso</span>' : ""}
               </span>
-              <span class="cat-amounts ${m.tipo === "Ingreso" ? "income" : ""}">${m.tipo === "Ingreso" ? "−" : ""}${fmtCLP(Math.abs(m.monto))}</span>
+              <span class="cat-amounts ${m.tipo === "Ingreso" ? "income" : ""}">${tipo === "Gasto" && m.tipo === "Ingreso" ? "−" : ""}${fmtCLP(Math.abs(m.monto))}</span>
             </div>`
           )
           .join("");
@@ -487,31 +506,37 @@ function wireSubcategoryToggles(scope) {
   });
 }
 
-function renderStats(selectedKey) {
-  const inMonth = movimientos.filter((m) => monthKey(m) === selectedKey);
+/** Categorías de `tipo` (Gasto o Ingreso) vs. presupuesto, con sus subcategorías
+ * anidadas — misma mecánica para los dos, así el Dashboard muestra "en cuánto
+ * voy" de cada lado y no solo del gasto. Se listan las que tuvieron movimiento
+ * este mes, MÁS las que tienen presupuesto (fijado o promedio de 3 meses)
+ * aunque todavía no haya nada cargado este mes puntual — así "Diezmo" o
+ * "Sueldo" no desaparecen solo porque recién no se cargó. Un presupuesto en $0
+ * sí se omite (no aporta nada mostrarlo). */
+function buildCategoryList(tipo, selectedKey, inMonth) {
+  const containerId = tipo === "Gasto" ? "categoryList" : "categoryListIngreso";
+  const totalId = tipo === "Gasto" ? "totalGastoMes" : "totalIngresoMes";
 
-  // Categorías (gasto neto de reembolsos) vs presupuesto — todas, sin recortar.
-  // Se listan las que tienen al menos un Gasto este mes, MÁS las que tienen
-  // presupuesto (fijado o promedio de 3 meses) aunque todavía no haya nada
-  // cargado este mes puntual — así "Diezmo" o "Entretenimiento" no desaparecen
-  // solo porque recién no los pagaste. Un presupuesto en $0 sí se omite (no
-  // aporta nada mostrarlo). (Un reembolso solo, sin gasto que reembolsar, no
-  // pinta acá tampoco — igual entra al Balance como ingreso.)
-  const categoriasConGasto = new Set(inMonth.filter((m) => m.tipo === "Gasto").map((m) => m.categoria));
-  for (const cat of categoriasForTipo("Gasto", selectedKey)) {
-    const meta = budgetForCategoria(selectedKey, cat);
-    if (meta !== null && meta > 0) categoriasConGasto.add(cat);
+  const categoriasConMov = new Set(inMonth.filter((m) => m.tipo === tipo).map((m) => m.categoria));
+  for (const cat of categoriasForTipo(tipo, selectedKey)) {
+    const meta = budgetForCategoria(selectedKey, cat, tipo);
+    if (meta !== null && meta > 0) categoriasConMov.add(cat);
   }
   const byCat = {};
-  for (const cat of categoriasConGasto) byCat[cat] = montoRealNeto("Gasto", cat, selectedKey);
+  for (const cat of categoriasConMov) byCat[cat] = montoRealNeto(tipo, cat, selectedKey);
   const sorted = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
-  const list = $("categoryList");
+
+  const totalReal = sorted.reduce((s, [, monto]) => s + monto, 0);
+  const totalMeta = totalBudgetForTipo(tipo, selectedKey);
+  $(totalId).innerHTML = `${fmtCLP(totalReal)} <span class="meta">${totalMeta > 0 ? `de ${fmtCLP(totalMeta)}` : "sin ppto."}</span>`;
+
+  const list = $(containerId);
   list.innerHTML = "";
   if (sorted.length === 0) {
-    list.innerHTML = '<div class="skeleton no-spinner">Sin gastos este mes</div>';
+    list.innerHTML = `<div class="skeleton no-spinner">Sin ${tipo === "Gasto" ? "gastos" : "ingresos"} este mes</div>`;
   }
   for (const [cat, monto] of sorted) {
-    const meta = budgetForCategoria(selectedKey, cat);
+    const meta = budgetForCategoria(selectedKey, cat, tipo);
     const hasMeta = meta !== null && meta > 0;
     const pct = hasMeta ? Math.round((monto / meta) * 100) : null;
     const row = document.createElement("div");
@@ -519,26 +544,26 @@ function renderStats(selectedKey) {
 
     const sparkline = buildTrendLineHTML(
       monthsBackFrom(selectedKey, 6),
-      monthlyTotals(cat)
+      tipo === "Gasto" ? monthlyTotals(cat) : monthlyTotalsTipo("Ingreso", cat)
     );
 
-    // Subcategorías de esta categoría, en el mes seleccionado — netas de reembolso.
-    const subsConGasto = new Set(
-      inMonth.filter((m) => m.tipo === "Gasto" && m.categoria === cat).map((m) => m.subcategoria || "(sin subcategoría)")
+    // Subcategorías de esta categoría, en el mes seleccionado.
+    const subsConMov = new Set(
+      inMonth.filter((m) => m.tipo === tipo && m.categoria === cat).map((m) => m.subcategoria || "(sin subcategoría)")
     );
-    // + las que tienen presupuesto (fijado o promedio) pero todavía sin gasto
-    // real este mes — para que se vea "esto lo tenés presupuestado, todavía
-    // no lo pagaste" en vez de desaparecer hasta que se cargue.
-    for (const sub of subcategoriasConPresupuesto(selectedKey, cat, "Gasto")) {
-      subsConGasto.add(sub || "(sin subcategoría)");
+    // + las que tienen presupuesto (fijado o promedio) pero todavía sin
+    // movimiento real este mes — para que se vea "esto lo tenés presupuestado,
+    // todavía no lo cargaste" en vez de desaparecer hasta que se cargue.
+    for (const sub of subcategoriasConPresupuesto(selectedKey, cat, tipo)) {
+      subsConMov.add(sub || "(sin subcategoría)");
     }
     const bySub = {};
-    for (const sub of subsConGasto) {
-      bySub[sub] = montoRealNeto("Gasto", cat, selectedKey, sub === "(sin subcategoría)" ? "" : sub);
+    for (const sub of subsConMov) {
+      bySub[sub] = montoRealNeto(tipo, cat, selectedKey, sub === "(sin subcategoría)" ? "" : sub);
     }
     const subRows = Object.entries(bySub)
       .sort((a, b) => b[1] - a[1])
-      .map(([sub, subMonto]) => buildSubcategoryRow(cat, sub, subMonto, selectedKey))
+      .map(([sub, subMonto]) => buildSubcategoryRow(cat, sub, subMonto, selectedKey, tipo))
       .join("");
 
     row.innerHTML = `
@@ -559,6 +584,13 @@ function renderStats(selectedKey) {
     list.appendChild(row);
   }
   Anim.barras(list); // las barras crecen de 0 a su ancho al cargar
+}
+
+function renderStats(selectedKey) {
+  const inMonth = movimientos.filter((m) => monthKey(m) === selectedKey);
+
+  buildCategoryList("Gasto", selectedKey, inMonth);
+  buildCategoryList("Ingreso", selectedKey, inMonth);
 
   // Por pagar (global, no filtrado por mes). Neto CON SIGNO: un "por pagar"
   // positivo es plata que te deben (un préstamo que hiciste) y descuenta deuda,
@@ -829,43 +861,58 @@ function categoriaDominante(movs) {
   return { categoria, subcategoria };
 }
 
-/** Un grupo "por cobrar": no le debes a un banco, alguien te debe a ti (un
- * préstamo que hiciste). No aplica "¿cuánto pagaste?" — aplica registrar lo que
- * te van abonando, o aceptar que una parte no se va a cobrar. Ambas acciones
- * quedan como una fila que descuenta del pendiente (igual que ya hacían tus
- * propios "Recupero dinero" en el histórico) más el movimiento real que
- * corresponde: un ingreso si te pagaron, un gasto si lo das por perdido. */
-function renderPanelCobrar(panel, grupo, totalCobrar) {
-  const { categoria, subcategoria } = categoriaDominante(grupo.movs);
-  const cuentasOpts = cuentas.map((c) => `<option value="${c.nombre}"></option>`).join("");
-  const detalle = grupo.movs
-    .slice()
-    .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))
-    .map(
-      (m) => `<div class="category-row-top" style="padding:5px 0;font-size:11.5px;">
-        <span style="color:var(--text-secondary)">
-          <strong>${m.detalle || m.categoria}</strong>
-          <span style="color:var(--text-muted)"> · ${m.fecha}</span>
-        </span>
-        <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
-      </div>`
-    )
-    .join("");
+/** Dos movimientos: uno que descuenta del pendiente (mismo mecanismo que ya
+ * usaban tus propios "Recupero dinero" en el histórico), y el real (ingreso o
+ * gasto) que corresponde. Recibe categoria/subcategoria/medioPendiente/venc
+ * explícitos (no los toma de un grupo) para poder aplicarse tanto a UN solo
+ * ítem del historial como al grupo completo. */
+async function registrarCobro(btn, { monto, tipoReal, detalleReal, medioReal, categoria, subcategoria, medioPendiente, venc, onRegistrado }) {
+  if (!monto || monto <= 0) return showToast("Monto inválido", true);
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Registrando…";
+  const hoyISO = new Date().toISOString().slice(0, 10);
+  const [yyyy, mm] = hoyISO.split("-");
+  try {
+    // 1) descuenta del pendiente por cobrar
+    await window.SheetsApi.appendRow(
+      "Movimientos!A:N",
+      [hoyISO, yyyy, String(Number(mm)), "Gasto", categoria, subcategoria, medioPendiente, "Por pagar",
+        -monto, detalleReal, venc, "", "", ""],
+      "RAW"
+    );
+    // 2) el movimiento real: ingreso si te pagaron, gasto si lo diste por perdido.
+    // Un castigo usa la subcategoría "Incobrable" — es una marca, no solo texto:
+    // la Conciliación la excluye de "lo pagado", porque no salió plata de ningún
+    // banco real (solo cuenta como pérdida en tu liquidez/presupuesto).
+    const subReal = tipoReal === "Gasto" ? "Incobrable" : subcategoria;
+    await window.SheetsApi.appendRow(
+      "Movimientos!A:N",
+      [hoyISO, yyyy, String(Number(mm)), tipoReal, categoria, subReal, medioReal, "Pagado",
+        tipoReal === "Gasto" ? -monto : monto, detalleReal, "", "", "", ""],
+      "RAW"
+    );
+    await onRegistrado();
+  } catch (err) {
+    console.error(err);
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
 
-  panel.innerHTML = `
-    <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:6px;">
-      <strong>${grupo.medio}</strong> te debe — historial de este préstamo/cobro:
-    </div>
-    ${detalle}
-
-    <div style="display:flex;gap:8px;margin-top:14px;">
+/** Monta el formulario abono/castigo (las dos pestañas) dentro de `container`,
+ * apuntado a un monto/categoría/subcategoría/medio/vencimiento puntuales —
+ * puede ser UN solo ítem del historial o el grupo completo, según quién llame. */
+function montarFormularioCobro(container, { defaultMonto, quienLabel, cuentasOpts, categoria, subcategoria, medioPendiente, venc, onRegistrado }) {
+  container.innerHTML = `
+    <div style="display:flex;gap:8px;">
       <button class="btn-secondary tab-abono active" style="flex:1;">Registrar abono</button>
       <button class="btn-secondary tab-castigo" style="flex:1;">Castigar incobrable</button>
     </div>
 
     <div class="bloque-abono" style="margin-top:12px;">
       <label>¿Cuánto te abonaron?</label>
-      <input type="number" inputmode="numeric" class="monto-abono" placeholder="0" value="${Math.round(totalCobrar)}">
+      <input type="number" inputmode="numeric" class="monto-abono" placeholder="0" value="${Math.round(defaultMonto)}">
       <label>¿En qué cuenta te llegó?</label>
       <input type="text" class="cuenta-abono" list="cuentasAbonoList" placeholder="Ej: Efectivo, Mercado Pago" autocomplete="off">
       <datalist id="cuentasAbonoList">${cuentasOpts}</datalist>
@@ -878,15 +925,15 @@ function renderPanelCobrar(panel, grupo, totalCobrar) {
         la pérdida), y sale del pendiente por cobrar. No mueve el saldo de ninguna cuenta.
       </p>
       <label>¿Cuánto vas a castigar?</label>
-      <input type="number" inputmode="numeric" class="monto-castigo" placeholder="0" value="${Math.round(totalCobrar)}">
+      <input type="number" inputmode="numeric" class="monto-castigo" placeholder="0" value="${Math.round(defaultMonto)}">
       <button class="btn-primary btn-registrar-castigo" style="margin-top:14px;background:var(--critical);">Castigar como incobrable</button>
     </div>
   `;
 
-  const tabAbono = panel.querySelector(".tab-abono");
-  const tabCastigo = panel.querySelector(".tab-castigo");
-  const bloqueAbono = panel.querySelector(".bloque-abono");
-  const bloqueCastigo = panel.querySelector(".bloque-castigo");
+  const tabAbono = container.querySelector(".tab-abono");
+  const tabCastigo = container.querySelector(".tab-castigo");
+  const bloqueAbono = container.querySelector(".bloque-abono");
+  const bloqueCastigo = container.querySelector(".bloque-castigo");
   tabAbono.addEventListener("click", (e) => {
     e.stopPropagation();
     tabAbono.classList.add("active"); tabCastigo.classList.remove("active");
@@ -898,61 +945,102 @@ function renderPanelCobrar(panel, grupo, totalCobrar) {
     bloqueCastigo.hidden = false; bloqueAbono.hidden = true;
   });
 
-  /** Dos movimientos: uno que descuenta del pendiente (mismo mecanismo que ya
-   * usa tu histórico), y el real (ingreso o gasto) que corresponde. */
-  const registrarCobro = async (btn, { monto, tipoReal, detalleReal, medioReal }) => {
-    if (!monto || monto <= 0) return showToast("Monto inválido", true);
-    const textoOriginal = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = "Registrando…";
-    const hoyISO = new Date().toISOString().slice(0, 10);
-    const [yyyy, mm] = hoyISO.split("-");
-    try {
-      // 1) descuenta del pendiente por cobrar (queda dentro del mismo grupo)
-      await window.SheetsApi.appendRow(
-        "Movimientos!A:N",
-        [hoyISO, yyyy, String(Number(mm)), "Gasto", categoria, subcategoria, grupo.medio, "Por pagar",
-          -monto, detalleReal, grupo.venc, "", "", ""],
-        "RAW"
-      );
-      // 2) el movimiento real: ingreso si te pagaron, gasto si lo diste por perdido.
-      // Un castigo usa la subcategoría "Incobrable" — es una marca, no solo texto:
-      // la Conciliación la excluye de "lo pagado", porque no salió plata de ningún
-      // banco real (solo cuenta como pérdida en tu liquidez/presupuesto).
-      const subReal = tipoReal === "Gasto" ? "Incobrable" : subcategoria;
-      await window.SheetsApi.appendRow(
-        "Movimientos!A:N",
-        [hoyISO, yyyy, String(Number(mm)), tipoReal, categoria, subReal, medioReal, "Pagado",
-          tipoReal === "Gasto" ? -monto : monto, detalleReal, "", "", "", ""],
-        "RAW"
-      );
-      await loadData();
-      renderStats($("monthSelect").value);
-    } catch (err) {
-      console.error(err);
-      btn.disabled = false;
-      btn.textContent = textoOriginal;
-    }
-  };
-
-  panel.querySelector(".btn-registrar-abono").addEventListener("click", async (e) => {
+  container.querySelector(".btn-registrar-abono").addEventListener("click", async (e) => {
     e.stopPropagation();
-    const monto = Number(panel.querySelector(".monto-abono").value);
-    const cuenta = panel.querySelector(".cuenta-abono").value.trim();
+    const monto = Number(container.querySelector(".monto-abono").value);
+    const cuenta = container.querySelector(".cuenta-abono").value.trim();
     if (!cuenta) return showToast("Falta la cuenta donde te llegó", true);
-    if (!confirm(`Se registrará un abono de ${fmtCLP(monto)} recibido en ${cuenta}.\n\nRecuerda actualizar después el saldo real de esa cuenta en la pestaña Cuentas.\n\n¿Continuar?`)) return;
+    if (!confirm(`Se registrará un abono de ${fmtCLP(monto)} recibido en ${cuenta}, de ${quienLabel}.\n\nRecuerda actualizar después el saldo real de esa cuenta en la pestaña Cuentas.\n\n¿Continuar?`)) return;
     await registrarCobro(e.currentTarget, {
-      monto, tipoReal: "Ingreso", medioReal: cuenta, detalleReal: `Abono recibido de ${grupo.medio}`,
+      monto, tipoReal: "Ingreso", medioReal: cuenta, detalleReal: `Abono recibido de ${quienLabel}`,
+      categoria, subcategoria, medioPendiente, venc, onRegistrado,
     });
   });
 
-  panel.querySelector(".btn-registrar-castigo").addEventListener("click", async (e) => {
+  container.querySelector(".btn-registrar-castigo").addEventListener("click", async (e) => {
     e.stopPropagation();
-    const monto = Number(panel.querySelector(".monto-castigo").value);
-    if (!confirm(`Se castigará ${fmtCLP(monto)} como incobrable de ${grupo.medio} — quedará registrado como gasto real. ¿Continuar?`)) return;
+    const monto = Number(container.querySelector(".monto-castigo").value);
+    if (!confirm(`Se castigará ${fmtCLP(monto)} como incobrable de ${quienLabel} — quedará registrado como gasto real. ¿Continuar?`)) return;
     await registrarCobro(e.currentTarget, {
-      monto, tipoReal: "Gasto", medioReal: grupo.medio, detalleReal: `Castigo incobrable ${grupo.medio}`,
+      monto, tipoReal: "Gasto", medioReal: medioPendiente, detalleReal: `Castigo incobrable ${quienLabel}`,
+      categoria, subcategoria, medioPendiente, venc, onRegistrado,
     });
+  });
+}
+
+/** Un grupo "por cobrar": no le debes a un banco, alguien te debe a ti (un
+ * préstamo que hiciste, o algo que le pagaste a alguien y te tiene que
+ * devolver). Cada ítem del historial se puede pinchar y liquidar por separado
+ * — así una persona no se mezcla con otra ni con otra compra del mismo grupo,
+ * y queda claro quién te sigue debiendo qué. Abajo del todo sigue disponible
+ * liquidar TODO lo que queda del grupo de una vez, para cuando te pagan todo junto. */
+function renderPanelCobrar(panel, grupo, totalCobrar) {
+  const { categoria, subcategoria } = categoriaDominante(grupo.movs);
+  const cuentasOpts = cuentas.map((c) => `<option value="${c.nombre}"></option>`).join("");
+  const onRegistrado = async () => { await loadData(); renderStats($("monthSelect").value); };
+
+  const movsOrdenados = grupo.movs.slice().sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+  const detalle = movsOrdenados
+    .map((m) => {
+      const id = `cobItem${++pagoUid}`;
+      m._formId = id;
+      return `
+        <div class="category-row-top cat-clickable" data-target="${id}" style="padding:5px 0;font-size:11.5px;">
+          <span style="color:var(--text-secondary)">
+            <strong>${m.detalle || m.categoria}</strong>
+            <span style="color:var(--text-muted)"> · ${m.fecha}</span>
+          </span>
+          <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
+        </div>
+        <div class="sub-detail" id="${id}" hidden style="margin:6px 0 10px;"></div>`;
+    })
+    .join("");
+
+  panel.innerHTML = `
+    <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:6px;">
+      <strong>${grupo.medio}</strong> te debe — pincha un ítem para registrar lo que te pagaron de ESE ítem puntual:
+    </div>
+    ${detalle}
+
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+      <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px;">
+        O liquida de una vez todo lo que queda pendiente de <strong>${grupo.medio}</strong> (${fmtCLP(totalCobrar)}):
+      </div>
+      <div class="cobro-total-form"></div>
+    </div>
+  `;
+
+  movsOrdenados.forEach((m) => {
+    const top = panel.querySelector(`[data-target="${m._formId}"]`);
+    const sub = panel.querySelector(`#${m._formId}`);
+    top.addEventListener("click", (e) => {
+      e.stopPropagation();
+      sub.hidden = !sub.hidden;
+      if (!sub.hidden && !sub.dataset.listo) {
+        sub.dataset.listo = "1";
+        montarFormularioCobro(sub, {
+          defaultMonto: Math.abs(m.monto),
+          quienLabel: `${grupo.medio} (${m.detalle || m.categoria})`,
+          cuentasOpts,
+          categoria: m.categoria,
+          subcategoria: m.subcategoria || subcategoria,
+          medioPendiente: grupo.medio,
+          venc: grupo.venc,
+          onRegistrado,
+        });
+      }
+    });
+  });
+
+  montarFormularioCobro(panel.querySelector(".cobro-total-form"), {
+    defaultMonto: totalCobrar,
+    quienLabel: grupo.medio,
+    cuentasOpts,
+    categoria,
+    subcategoria,
+    medioPendiente: grupo.medio,
+    venc: grupo.venc,
+    onRegistrado,
   });
 }
 
@@ -1398,6 +1486,15 @@ async function init() {
   renderTrend();
 
   $("monthSelect").addEventListener("change", (e) => renderStats(e.target.value));
+
+  // Gastos/Ingresos: el toggle de arriba es fijo (vive en el HTML, no se
+  // reconstruye con cada mes), así que se cablea una sola vez acá.
+  $("toggleGastoTipo").addEventListener("click", () => {
+    $("categoryList").hidden = !$("categoryList").hidden;
+  });
+  $("toggleIngresoTipo").addEventListener("click", () => {
+    $("categoryListIngreso").hidden = !$("categoryListIngreso").hidden;
+  });
 
   // Cada "?" abre/cierra la explicación de SU número (el texto lo llena
   // renderIndicadores, con los montos reales del mes mirado).

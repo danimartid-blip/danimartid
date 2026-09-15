@@ -249,14 +249,23 @@ function actualizarEstadoPorMedio() {
   $("estadoToggle").querySelectorAll("button").forEach((b) => b.classList.remove("active"));
   $("estadoToggle").querySelector(`[data-estado="${destino}"]`).classList.add("active");
   actualizarVencSection();
+  actualizarLabelEstado();
 }
 
 /** Puro rótulo: un Gasto pendiente es "Por pagar", un Ingreso pendiente es
  * "Por cobrar" — misma lógica, distinta palabra según de qué lado estás. El
  * valor guardado en la planilla sigue siendo siempre "Por pagar" (así no se
- * rompe ningún filtro existente); esto solo cambia lo que el botón dice. */
+ * rompe ningún filtro existente); esto solo cambia lo que el botón dice.
+ *
+ * También cambia el rótulo de "Medio de pago": un Ingreso "Por cobrar" no
+ * tiene un medio de pago real todavía (nadie te pagó nada), así que ese campo
+ * se reutiliza para guardar QUIÉN te debe (el Dashboard agrupa "Por cobrar"
+ * por este mismo campo). Dejarlo diciendo siempre "Medio de pago" llevó a
+ * cargar cosas como "Starbucks PM" ahí en vez del nombre de la persona. */
 function actualizarLabelEstado() {
   $("btnPorPagar").textContent = state.tipo === "Ingreso" ? "Por cobrar" : "Por pagar";
+  const esPorCobrar = state.tipo === "Ingreso" && state.estado === "Por pagar";
+  $("labelMedioPago").textContent = esPorCobrar ? "¿Quién te debe?" : "Medio de pago";
 }
 
 function actualizarVencSection() {
@@ -520,6 +529,7 @@ async function init() {
   $("estadoToggle").addEventListener("click", () => {
     estadoTocadoManualmente = true; // el usuario decidió — se deja de auto-elegir por el medio
     actualizarVencSection();
+    actualizarLabelEstado();
   });
   $("medioPago").addEventListener("input", () => {
     actualizarEstadoPorMedio(); // débito/cuenta real -> Pagado, tarjeta de crédito -> Por pagar

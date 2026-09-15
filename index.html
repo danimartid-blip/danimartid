@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202609111138">
+<link rel="stylesheet" href="css/styles.css?v=202609151958">
 </head>
 <body>
 
@@ -73,8 +73,21 @@
     </div>
 
     <div class="card">
-      <div class="card-title">Gasto por categoría vs. presupuesto</div>
-      <div id="categoryList"></div>
+      <div class="card-title">Por categoría vs. presupuesto</div>
+      <div class="category-row">
+        <div class="category-row-top cat-clickable" id="toggleGastoTipo">
+          <span class="cat-name">Gastos</span>
+          <span class="cat-amounts expense" id="totalGastoMes"></span>
+        </div>
+        <div class="cat-detail" id="categoryList" hidden></div>
+      </div>
+      <div class="category-row">
+        <div class="category-row-top cat-clickable" id="toggleIngresoTipo">
+          <span class="cat-name">Ingresos</span>
+          <span class="cat-amounts income" id="totalIngresoMes"></span>
+        </div>
+        <div class="cat-detail" id="categoryListIngreso" hidden></div>
+      </div>
     </div>
 
     <div class="card">
@@ -124,10 +137,10 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202609111138"></script>
+<script src="js/config.js?v=202609151958"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202609111138"></script>
-<script src="js/anim.js?v=202609111138"></script>
-<script src="js/dashboard.js?v=202609111138"></script>
+<script src="js/sheets-auth.js?v=202609151958"></script>
+<script src="js/anim.js?v=202609151958"></script>
+<script src="js/dashboard.js?v=202609151958"></script>
 </body>
 </html>
