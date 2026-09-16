@@ -257,15 +257,17 @@ function actualizarEstadoPorMedio() {
  * valor guardado en la planilla sigue siendo siempre "Por pagar" (así no se
  * rompe ningún filtro existente); esto solo cambia lo que el botón dice.
  *
- * También cambia el rótulo de "Medio de pago": un Ingreso "Por cobrar" no
- * tiene un medio de pago real todavía (nadie te pagó nada), así que ese campo
- * se reutiliza para guardar QUIÉN te debe (el Dashboard agrupa "Por cobrar"
- * por este mismo campo). Dejarlo diciendo siempre "Medio de pago" llevó a
- * cargar cosas como "Starbucks PM" ahí en vez del nombre de la persona. */
+ * También cambia el rótulo de "Detalle": en un Ingreso "Por cobrar", ese campo
+ * es donde va el nombre de quién te debe (ej. "Cobro a Gabi", "Prestamo pana
+ * Beto") — Medio_pago sigue siendo la cuenta real de siempre (Banco Chile,
+ * Mercado Pago...), NO se reutiliza. Sin esta pista, un Detalle vago como
+ * "Compra starbuck lunes pm" no dice quién debe, y el Dashboard no tiene otra
+ * forma de saberlo. */
 function actualizarLabelEstado() {
   $("btnPorPagar").textContent = state.tipo === "Ingreso" ? "Por cobrar" : "Por pagar";
   const esPorCobrar = state.tipo === "Ingreso" && state.estado === "Por pagar";
-  $("labelMedioPago").textContent = esPorCobrar ? "¿Quién te debe?" : "Medio de pago";
+  $("labelDetalle").textContent = esPorCobrar ? "Detalle (¿quién te debe?)" : "Detalle";
+  $("detalle").placeholder = esPorCobrar ? "Ej: Cobro a Esteban" : "Ej: Supermercado Lider";
 }
 
 function actualizarVencSection() {
