@@ -12,6 +12,14 @@ let movimientos = []; // { fecha, año, mes, tipo, categoria, subcategoria, medi
 let presupuestoRows = []; // { mes, tipo, categoria, subcategoria, monto }
 let cuentas = []; // { nombre, saldo }
 
+/** Filas que son el CONTRA-ASIENTO de un cobro (el Gasto negativo que baja un
+ * "por cobrar" cuando te abonan o castigás). No son gasto real: la plata nunca
+ * salió, solo se está cancelando algo que te debían. Contarlas como gasto
+ * inflaba el mes al doble en cada castigo (un castigo de $20.000 se leía como
+ * $40.000) y subía la liquidez al castigar, que es justo al revés. Se recalcula
+ * en loadData, con separarPendientes. */
+let filasDeHilo = new Set();
+
 /** The n month-keys strictly before `mes`, oldest to newest. Mirrors presupuesto.js
  * so both pages always agree on the "proposed" budget when nothing is fijado. */
 function monthsBeforeExclusive(mes, n) {
@@ -72,6 +80,7 @@ function gastoMonthlyBreakdown(categoria, subcategoria, mes, anchorMes = mes) {
   let reembolsoLabel = null;
   for (const m of movimientos) {
     if (m.categoria !== categoria || monthKey(m) !== mes) continue;
+    if (filasDeHilo.has(m.fila)) continue; // contra-asiento de un cobro, no es gasto real
     if (m.tipo === "Gasto" && normSub(m.subcategoria) === sub) bruto += Math.abs(m.monto);
     else if (m.tipo === "Ingreso") {
       const exact = normSub(m.subcategoria) === sub;
@@ -121,7 +130,9 @@ function montoRealNeto(tipo, categoria, mes, subcategoria, anchorMes = mes) {
   if (tipo === "Gasto" && subcategoria !== undefined) return gastoMonthlyBreakdown(categoria, subcategoria, mes, anchorMes).neto;
   if (tipo === "Gasto") {
     const gastoSubs = new Set();
-    for (const m of movimientos) if (m.tipo === "Gasto" && m.categoria === categoria && monthKey(m) === mes) gastoSubs.add(m.subcategoria || "");
+    for (const m of movimientos)
+      if (m.tipo === "Gasto" && m.categoria === categoria && monthKey(m) === mes && !filasDeHilo.has(m.fila))
+        gastoSubs.add(m.subcategoria || "");
     let total = 0;
     for (const sub of gastoSubs) total += gastoMonthlyBreakdown(categoria, sub, mes, anchorMes).neto;
     return total;
@@ -545,7 +556,9 @@ function buildCategoryList(tipo, selectedKey, inMonth) {
   // Préstamo, Trabajo) aparecían en "Ingresos" con su reembolso del mes, como si
   // fuera plata nueva, cuando ya está restada del lado del Gasto.
   const categoriasConMov = new Set(
-    inMonth.filter((m) => m.tipo === tipo && !(tipo === "Ingreso" && esMovReembolso(m, selectedKey))).map((m) => m.categoria)
+    inMonth
+      .filter((m) => m.tipo === tipo && !filasDeHilo.has(m.fila) && !(tipo === "Ingreso" && esMovReembolso(m, selectedKey)))
+      .map((m) => m.categoria)
   );
   for (const cat of categoriasForTipo(tipo, selectedKey)) {
     const meta = budgetForCategoria(selectedKey, cat, tipo);
@@ -580,7 +593,13 @@ function buildCategoryList(tipo, selectedKey, inMonth) {
     // de excluir reembolsos del lado Ingreso que arriba).
     const subsConMov = new Set(
       inMonth
-        .filter((m) => m.tipo === tipo && m.categoria === cat && !(tipo === "Ingreso" && esMovReembolso(m, selectedKey)))
+        .filter(
+          (m) =>
+            m.tipo === tipo &&
+            m.categoria === cat &&
+            !filasDeHilo.has(m.fila) &&
+            !(tipo === "Ingreso" && esMovReembolso(m, selectedKey))
+        )
         .map((m) => m.subcategoria || "(sin subcategoría)")
     );
     // + las que tienen presupuesto (fijado o promedio) pero todavía sin
@@ -625,12 +644,10 @@ function renderStats(selectedKey) {
   buildCategoryList("Gasto", selectedKey, inMonth);
   buildCategoryList("Ingreso", selectedKey, inMonth);
 
-  // Por pagar (global, no filtrado por mes). Neto CON SIGNO: un "por pagar"
-  // positivo es plata que te deben (un préstamo que hiciste) y descuenta deuda,
-  // no la suma. Sumarlo en absoluto inflaba la deuda al doble de esos montos.
+  // Pendiente (global, no filtrado por mes), separado de una vez en deuda tuya
+  // y hilos de cobro por persona — ver separarPendientes.
   const pendientes = movimientos.filter((m) => m.estado === "Por pagar");
-  // Los totales de "Por pagar / Por cobrar" los escribe renderPorPagarDetail,
-  // que los separa bien (ver ahí el neteo por grupo).
+  const { hilos, deuda } = separarPendientes(pendientes);
 
   // Ventana de corto plazo (la que usa Liquidez): lo que vence dentro de los
   // próximos ~40 días. Una cuota futura (la 2 de 3, que vence dentro de 2
@@ -647,7 +664,7 @@ function renderStats(selectedKey) {
   const hoy = new Date();
   const cutoffPronto = new Date(hoy);
   cutoffPronto.setDate(cutoffPronto.getDate() + 40);
-  const pendientesPronto = pendientes.filter((m) => {
+  const deudaPronto = deuda.filter((m) => {
     const d = parseFechaVenc(m.fechaVencimiento);
     if (!d) return true; // sin fecha registrada: más seguro tratarlo como ya exigible
     return d <= cutoffPronto;
@@ -656,12 +673,13 @@ function renderStats(selectedKey) {
   const totalCuentas = cuentas.reduce((s, c) => s + c.saldo, 0);
   renderIndicadores(selectedKey, {
     totalCuentas,
-    pagarPronto: sumaPagar(pendientesPronto),
-    pagarTotal: sumaPagar(pendientes),
-    cobrarTotal: sumaCobrar(pendientes),
+    pagarPronto: sumaPagar(deudaPronto),
+    pagarTotal: sumaPagar(deuda),
+    cobrarTotal: sumaCobrarHilos(hilos),
   });
   renderConciliacion(selectedKey);
-  renderPorPagarDetail(pendientes);
+  renderPorPagar(deuda);
+  renderPorCobrar(hilos);
 }
 
 /** Neteo por grupo (medio de pago + fecha de vencimiento) de lo "Por pagar".
@@ -679,7 +697,141 @@ function netosPorGrupo(movs) {
   return Object.values(porGrupo);
 }
 const sumaPagar = (movs) => netosPorGrupo(movs).filter((n) => n > 0).reduce((s, n) => s + n, 0);
-const sumaCobrar = (movs) => netosPorGrupo(movs).filter((n) => n < 0).reduce((s, n) => s + Math.abs(n), 0);
+
+/** Quién te debe, sacado del texto del Detalle — no hay campo propio para la
+ * persona (Medio_pago es la cuenta real). Se le quitan los prefijos con que
+ * quedan escritos estos movimientos ("Cobro a Gabi", "Prestamo pana Beto"). */
+const PREFIJOS_COBRO = [
+  /^cobro\s+(a|de)\s+/i, /^cobro\s+/i, /^abono\s+recibido\s+de\s+/i, /^abono\s+de\s+/i,
+  /^prestamo\s+(pana|a)\s+/i, /^préstamo\s+(pana|a)\s+/i, /^recupero\s+dinero\s+/i,
+  /^castigo\s+incobrable\s+/i, /^devoluci[oó]n\s+(de\s+)?/i, /^pago\s+(de\s+)?/i,
+];
+function personaDeDetalle(m) {
+  let s = (m.detalle || "").trim();
+  for (const re of PREFIJOS_COBRO) {
+    const corto = s.replace(re, "");
+    if (corto !== s) { s = corto.trim(); break; }
+  }
+  s = s.replace(/\s*\([^)]*\)\s*$/, "").trim(); // "Beto (Daniel)" -> "Beto"
+  return s || (m.subcategoria || "").trim() || m.categoria;
+}
+
+/** Separa lo pendiente en dos mundos que no se mezclan:
+ *
+ *   hilos  = lo que te deben, UNO POR PERSONA. Arranca en un Ingreso pendiente
+ *            ("Cobro a Gabi") y arrastra las filas Gasto que lo van bajando
+ *            (abonos que te pagaron, castigos por incobrable).
+ *   deuda  = lo tuyo por pagar de verdad (tarjetas), que se sigue agrupando por
+ *            medio de pago + vencimiento, que es como llega el estado de cuenta.
+ *
+ * Antes todo iba junto en un solo grupo medio+vencimiento: si Gabi, Esteban y
+ * Ric te debían por la misma tarjeta y el mismo vencimiento, se veían como UN
+ * número y el abono de uno bajaba la deuda de los otros. Por eso ahora el cobro
+ * se agrupa por persona: es la única forma de saber quién te queda debiendo.
+ *
+ * Un Gasto pendiente cae en un hilo si lo nombra en el Detalle; si no, si calza
+ * con un único hilo por categoría+subcategoría+medio+vencimiento (así entran
+ * los castigos viejos, que quedaron escritos como "Castigo incobrable Banco
+ * Chile" sin el nombre de la persona). Lo que no cae en ningún hilo es deuda. */
+function separarPendientes(pendientes) {
+  const hilos = new Map();
+  for (const m of pendientes) {
+    if (m.tipo !== "Ingreso") continue;
+    const persona = personaDeDetalle(m);
+    const k = normSub(persona);
+    if (!hilos.has(k)) hilos.set(k, { persona, movs: [] });
+    hilos.get(k).movs.push(m);
+  }
+
+  const deuda = [];
+  for (const m of pendientes) {
+    if (m.tipo === "Ingreso") continue;
+    const texto = normSub(m.detalle);
+    let k = [...hilos.keys()].find((key) => key && texto.includes(key));
+    if (!k) {
+      const calzan = [...hilos.entries()].filter(([, h]) =>
+        h.movs.some(
+          (o) =>
+            o.categoria === m.categoria &&
+            normSub(o.subcategoria) === normSub(m.subcategoria) &&
+            o.medioPago === m.medioPago &&
+            (o.fechaVencimiento || "").trim() === (m.fechaVencimiento || "").trim()
+        )
+      );
+      if (calzan.length === 1) k = calzan[0][0];
+    }
+    if (k) hilos.get(k).movs.push(m);
+    else deuda.push(m);
+  }
+  return { hilos: [...hilos.values()], deuda };
+}
+
+/** Lo que queda por cobrar de un hilo: el cobro original menos todo lo que ya
+ * se abonó o castigó. Cero = saldado (no se muestra ni suma). */
+const netoHilo = (h) => h.movs.reduce((s, m) => s + m.monto, 0);
+const sumaCobrarHilos = (hilos) => hilos.reduce((s, h) => s + Math.max(0, netoHilo(h)), 0);
+
+/** Cuánto FALTA por gastar (o entrar) del presupuesto del mes, sumando
+ * categoría por categoría con piso en cero, más el detalle de lo que ya se pasó.
+ *
+ * El piso en cero es la clave: si una categoría ya se pasó del presupuesto, lo
+ * que falta de ella es CERO, nunca un número negativo que le devuelva plata a la
+ * proyección. Esa plata ya salió y ya está descontada de la base. Sumar el total
+ * global en vez de categoría por categoría hacía justo eso: un gasto sin
+ * presupuesto (ej. un castigo incobrable) se compensaba solo y desaparecía. */
+function faltaDelPresupuesto(tipo, mes) {
+  const cats = new Set(categoriasForTipo(tipo, mes));
+  for (const m of movimientos) {
+    if (m.tipo === tipo && monthKey(m) === mes && !filasDeHilo.has(m.fila)) cats.add(m.categoria);
+  }
+  let falta = 0;
+  let excedido = 0;
+  const excesos = [];
+  for (const cat of cats) {
+    const meta = budgetForCategoria(mes, cat, tipo) || 0;
+    const real = montoRealNeto(tipo, cat, mes);
+    falta += Math.max(0, meta - real);
+    if (real > meta) {
+      excedido += real - meta;
+      excesos.push({ cat, meta, real, exceso: real - meta });
+    }
+  }
+  excesos.sort((a, b) => b.exceso - a.exceso);
+  return { falta, excedido, excesos };
+}
+
+/** La ficha "Fuera de presupuesto": lo gastado este mes por sobre el
+ * presupuesto de cada categoría, separando lo que directamente no tenía
+ * presupuesto. Es el aviso que faltaba — un castigo incobrable, una compra
+ * inusual: cosas que no estaban planificadas y que sí te mueven la plata. */
+function renderFueraPresupuesto(gasto, proyecta, nombreMes) {
+  const total = $("statFueraPpto");
+  const detalle = $("fueraPptoDetalle");
+  if (!proyecta || gasto.excedido <= 0) {
+    total.innerHTML = `<span class="meta">${proyecta ? "nada, vas dentro del presupuesto" : `${nombreMes} no se proyecta`}</span>`;
+    detalle.innerHTML = "";
+    return;
+  }
+  total.innerHTML = `${fmtCLP(gasto.excedido)} <span class="meta">de más</span>`;
+  total.className = "cat-amounts expense";
+  detalle.innerHTML =
+    `<div style="font-size:11.5px;color:var(--text-muted);margin:8px 0 6px;line-height:1.5;">
+       Esto ya salió de tu plata y no vuelve a la proyección. Lo que está <strong>sin presupuesto</strong>
+       es lo que ni siquiera tenías contemplado este mes.
+     </div>` +
+    gasto.excesos
+      .map(
+        (e) => `<div class="category-row-top" style="padding:6px 0;font-size:12px;">
+          <span style="color:var(--text-secondary)">${e.cat}
+            ${e.meta <= 0 ? '<span class="badge badge-critical" style="margin-left:4px;">sin presupuesto</span>' : ""}
+          </span>
+          <span class="cat-amounts expense">${fmtCLP(e.exceso)}
+            <span class="meta">${e.meta > 0 ? `gastaste ${fmtCLP(e.real)} de ${fmtCLP(e.meta)}` : `gastaste ${fmtCLP(e.real)}`}</span>
+          </span>
+        </div>`
+      )
+      .join("");
+}
 
 /** Los tres indicadores de arriba — los que se usan para decidir. Salen de la
  * misma materia prima (plata en cuentas, deuda, cobros, presupuesto) y se
@@ -690,15 +842,19 @@ const sumaCobrar = (movs) => netosPorGrupo(movs).filter((n) => n < 0).reduce((s,
  *   Patrimonio líquido = plata − TODA la deuda + TODO lo por cobrar,
  *                        con el mes presupuestado                → la foto completa
  *
- * "Con el mes presupuestado" = se le saca lo real que ya pasó del mes mirado y
- * se le pone el presupuesto de ese mes en su lugar: con cuánto terminás si
- * cumplís el ppto. El paso de sacar lo real es obligatorio — si solo se sumara
- * el presupuesto, el mes se contaría dos veces (lo que ya gastaste ya está
- * dentro de la plata y de la deuda).
+ * "Con el mes presupuestado" = a la plata de hoy se le descuenta LO QUE FALTA
+ * del presupuesto de acá a fin de mes, categoría por categoría, y se le suma lo
+ * que falta entrar de los ingresos presupuestados.
  *
- * La deuda y los cobros salen del mismo neteo por grupo que la ficha "Por pagar
- * / Por cobrar" de más abajo, así que los números de arriba y los de abajo
- * siempre cuadran. */
+ * Ese "categoría por categoría" con piso en cero es la parte importante: lo que
+ * ya gastaste de más en una categoría NO vuelve a la proyección, porque esa
+ * plata ya salió. Antes se hacía en un solo número global (presupuesto total −
+ * real total), y ahí un gasto no presupuestado se evaporaba: castigar $20.000
+ * incobrables SUBÍA la liquidez $40.000 en vez de bajar el patrimonio $20.000.
+ *
+ * La deuda y los cobros salen de la misma separación (separarPendientes) que las
+ * fichas "Por pagar" y "Por cobrar" de más abajo, así que los números de arriba
+ * y los de abajo siempre cuadran. */
 function renderIndicadores(selectedKey, d) {
   const saldoActual = d.totalCuentas - d.pagarPronto;
   const basePatrimonio = d.totalCuentas - d.pagarTotal + d.cobrarTotal;
@@ -706,14 +862,8 @@ function renderIndicadores(selectedKey, d) {
   // --- el mismo ajuste de presupuesto para los dos indicadores de arriba ---
   const ingresoPpto = totalBudgetForTipo("Ingreso", selectedKey);
   const gastoPpto = totalBudgetForTipo("Gasto", selectedKey);
-  const resultadoPpto = ingresoPpto - gastoPpto;
-
-  // Lo real del mes va COMPLETO (pagado y por pagar): las dos formas ya están
-  // dentro de la base, una bajando la plata y la otra subiendo la deuda.
-  const delMes = movimientos.filter((m) => monthKey(m) === selectedKey);
-  const realIngresos = delMes.filter((m) => m.tipo === "Ingreso").reduce((s, m) => s + Math.abs(m.monto), 0);
-  const realGastos = delMes.filter((m) => m.tipo === "Gasto").reduce((s, m) => s + Math.abs(m.monto), 0);
-  const realNeto = realIngresos - realGastos;
+  const gasto = faltaDelPresupuesto("Gasto", selectedKey);
+  const ingreso = faltaDelPresupuesto("Ingreso", selectedKey);
 
   const [y, mo] = selectedKey.split("-");
   const nombreMes = `${MESES[Number(mo)]} ${y}`;
@@ -722,8 +872,10 @@ function renderIndicadores(selectedKey, d) {
   // después, cambiarle lo real por su presupuesto sería inventar.
   const esPasado = selectedKey < mesActual();
   const proyecta = hayPpto && !esPasado;
-  const ajuste = proyecta ? resultadoPpto - realNeto : 0;
+  const ajuste = proyecta ? ingreso.falta - gasto.falta : 0;
   const nota = !hayPpto ? "Sin presupuesto para este mes" : esPasado ? `${nombreMes} ya pasó` : "";
+
+  renderFueraPresupuesto(gasto, proyecta, nombreMes);
 
   const pintar = (el, valor, clase) => {
     Anim.numero(el, valor, fmtCLP);
@@ -732,8 +884,11 @@ function renderIndicadores(selectedKey, d) {
   // Textos del "?": cortos y en chileno. Cada uno se lee como la fórmula dicha
   // en voz alta, con los montos del mes que estás mirando.
   const fraseMes = proyecta
-    ? `Después cambias lo que llevas del mes (${fmtCLP(realNeto)}) por el presupuesto completo ` +
-      `(${fmtCLP(ingresoPpto)} de ingresos menos ${fmtCLP(gastoPpto)} de gastos = ${fmtCLP(resultadoPpto)}).`
+    ? `Después le descuentas lo que te falta gastar del presupuesto (${fmtCLP(gasto.falta)}) y le sumas lo ` +
+      `que falta entrar (${fmtCLP(ingreso.falta)}).` +
+      (gasto.excedido > 0
+        ? ` Los ${fmtCLP(gasto.excedido)} que ya gastaste por sobre el presupuesto no se devuelven: esa plata ya salió.`
+        : "")
     : `${nota}, así que no se proyecta nada.`;
 
   // 1) Saldo actual — la foto de hoy, sin proyectar nada.
@@ -769,17 +924,14 @@ function fechaVencLegible(venc, d) {
   return `${d.getDate()} ${MESES[d.getMonth() + 1]} ${d.getFullYear()}`;
 }
 
-/** Pendientes agrupados por FECHA de vencimiento, con dos columnas separadas:
- * lo que debés y lo que te deben. Antes iba todo en un solo número neto (un
- * cobro de $20.000 se "comía" $20.000 de deuda y no se veía por ningún lado) y
- * el detalle por tarjeta estaba escondido detrás de un botón aparte. Ahora se
- * toca la fecha y se abre ahí mismo lo que se paga/cobra ese día. */
-function renderPorPagarDetail(pendientes) {
-  Anim.numero($("statPorPagar"), sumaPagar(pendientes), fmtCLP);
-  Anim.numero($("statPorCobrar"), sumaCobrar(pendientes), fmtCLP);
+/** Ficha "Por pagar": solo deuda tuya, agrupada por fecha de vencimiento y
+ * dentro de cada fecha por medio de pago — que es como llega el estado de
+ * cuenta. Lo que te deben ya no se mezcla acá: vive en su propia ficha. */
+function renderPorPagar(deuda) {
+  Anim.numero($("statPorPagar"), sumaPagar(deuda), fmtCLP);
 
   const porFecha = {};
-  for (const m of pendientes) {
+  for (const m of deuda) {
     const venc = (m.fechaVencimiento || "").trim();
     (porFecha[venc] ||= { venc, d: parseFechaVenc(venc), movs: [] }).movs.push(m);
   }
@@ -792,15 +944,15 @@ function renderPorPagarDetail(pendientes) {
   const cont = $("porPagarPeriodos");
   cont.innerHTML = "";
   if (fechas.length === 0) {
-    cont.innerHTML = '<div class="skeleton no-spinner">Nada pendiente</div>';
+    cont.innerHTML = '<div class="skeleton no-spinner">No debes nada</div>';
     return;
   }
 
   const hoy = new Date(new Date().toDateString());
   for (const f of fechas) {
     const pagar = sumaPagar(f.movs);
-    const cobrar = sumaCobrar(f.movs);
-    const vencido = f.d && f.d < hoy && pagar > 0;
+    if (pagar <= 0) continue;
+    const vencido = f.d && f.d < hoy;
     const id = `venc${++pagoUid}`;
 
     const row = document.createElement("div");
@@ -808,10 +960,7 @@ function renderPorPagarDetail(pendientes) {
     row.innerHTML = `
       <div class="category-row-top cat-clickable">
         <span class="cat-name">${fechaVencLegible(f.venc, f.d)}${vencido ? ' <span class="badge badge-critical">atrasado</span>' : ""}</span>
-        <span class="venc-montos">
-          <span class="venc-monto${pagar ? " expense" : " is-empty"}">${pagar ? fmtCLP(pagar) : "—"}</span>
-          <span class="venc-monto${cobrar ? " income" : " is-empty"}">${cobrar ? fmtCLP(cobrar) : "—"}</span>
-        </span>
+        <span class="cat-amounts expense">${fmtCLP(pagar)}</span>
       </div>
       <div class="cat-detail" id="${id}" hidden></div>`;
 
@@ -827,20 +976,67 @@ function renderPorPagarDetail(pendientes) {
   }
 }
 
-/** Dentro de una fecha: una fila por medio de pago (el estado de cuenta que
- * llega ese día), y cada una abre el panel granular de siempre — pagar la
- * tarjeta, o registrar un abono/castigo si es algo por cobrar. */
+/** Ficha "Por cobrar": UNA FILA POR PERSONA con lo que te queda debiendo, y
+ * adentro su historial (el cobro original y lo que ya te fue abonando o se
+ * castigó), donde cada ítem se puede liquidar por separado.
+ *
+ * Antes esto iba mezclado con la deuda, agrupado por medio de pago: si Gabi,
+ * Esteban y Ric te debían por la misma tarjeta y el mismo vencimiento, se veía
+ * un solo número y el abono de uno bajaba la deuda de los otros. */
+function renderPorCobrar(hilos) {
+  Anim.numero($("statPorCobrar"), sumaCobrarHilos(hilos), fmtCLP);
+
+  const abiertos = hilos.filter((h) => netoHilo(h) > 0).sort((a, b) => netoHilo(b) - netoHilo(a));
+  const cont = $("porCobrarPersonas");
+  cont.innerHTML = "";
+  if (abiertos.length === 0) {
+    cont.innerHTML = '<div class="skeleton no-spinner">Nadie te debe nada</div>';
+    return;
+  }
+
+  for (const h of abiertos) {
+    const neto = netoHilo(h);
+    const abonado = h.movs.filter((m) => m.tipo !== "Ingreso").reduce((s, m) => s + Math.abs(m.monto), 0);
+    const id = `cob${++pagoUid}`;
+
+    const row = document.createElement("div");
+    row.className = "category-row";
+    row.innerHTML = `
+      <div class="category-row-top cat-clickable">
+        <span class="cat-name">${h.persona}</span>
+        <span class="cat-amounts income">${fmtCLP(neto)}</span>
+      </div>
+      <div style="font-size:11.5px;margin-top:3px;color:var(--text-muted);">
+        te debe · ${h.movs.length} movimiento${h.movs.length === 1 ? "" : "s"}${abonado > 0 ? ` · ya abonó ${fmtCLP(abonado)}` : ""}
+      </div>
+      <div class="cat-detail" id="${id}" hidden></div>`;
+
+    const panel = row.querySelector(`#${id}`);
+    row.querySelector(".cat-clickable").addEventListener("click", () => {
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden && !panel.dataset.listo) {
+        panel.dataset.listo = "1";
+        renderPanelCobrar(panel, h, neto);
+      }
+    });
+    cont.appendChild(row);
+  }
+}
+
+/** Dentro de una fecha: una fila por medio de pago — el estado de cuenta que
+ * llega ese día. Se abre para registrar el pago de esa tarjeta. */
 function renderGruposDeFecha(panel, movs) {
   const grupos = {};
   for (const m of movs) {
     const medio = m.medioPago || "(sin medio de pago)";
     (grupos[medio] ||= { medio, venc: m.fechaVencimiento || "", movs: [] }).movs.push(m);
   }
-  const lista = Object.values(grupos).sort(
-    (a, b) => Math.abs(b.movs.reduce((s, m) => s + m.monto, 0)) - Math.abs(a.movs.reduce((s, m) => s + m.monto, 0))
-  );
+  const lista = Object.values(grupos)
+    .map((g) => ({ ...g, total: -g.movs.reduce((s, m) => s + m.monto, 0) }))
+    .filter((g) => g.total > 0)
+    .sort((a, b) => b.total - a.total);
 
-  panel.innerHTML = lista.map((g) => filaGrupo(g, -g.movs.reduce((s, m) => s + m.monto, 0) < 0)).join("");
+  panel.innerHTML = lista.map(filaGrupo).join("");
 
   for (const g of lista) {
     const wrap = panel.querySelector(`[data-wrap="${g._id}"]`);
@@ -849,19 +1045,15 @@ function renderGruposDeFecha(panel, movs) {
       sub.hidden = !sub.hidden;
       if (!sub.hidden && !sub.dataset.listo) {
         sub.dataset.listo = "1";
-        const total = -g.movs.reduce((s, m) => s + m.monto, 0);
-        if (total < 0) renderPanelCobrar(sub, g, Math.abs(total));
-        else renderPanelPago(sub, g, total);
+        renderPanelPago(sub, g, g.total);
       }
     });
   }
 }
 
 /** Fila de un medio de pago dentro de una fecha — el "estado de cuenta" que
- * llega ese día. Se abre para pagar la tarjeta (renderPanelPago) o registrar
- * un abono/castigo si es algo por cobrar (renderPanelCobrar). */
-function filaGrupo(g, esCobrar) {
-  const total = Math.abs(-g.movs.reduce((s, m) => s + m.monto, 0));
+ * llega ese día. Se abre para pagar la tarjeta (renderPanelPago). */
+function filaGrupo(g) {
   const id = `pg${++pagoUid}`;
   g._id = id;
   // La fecha ya la pone la fila de arriba (esta va anidada dentro de ella), así
@@ -870,10 +1062,10 @@ function filaGrupo(g, esCobrar) {
     <div class="category-row" data-wrap="${id}">
       <div class="category-row-top cat-clickable" data-target="${id}">
         <span class="cat-name">${g.medio}</span>
-        <span class="cat-amounts ${esCobrar ? "income" : ""}">${fmtCLP(total)}</span>
+        <span class="cat-amounts">${fmtCLP(g.total)}</span>
       </div>
       <div style="font-size:11.5px;margin-top:3px;color:var(--text-muted);">
-        ${esCobrar ? "te deben · " : ""}${g.movs.length} movimiento${g.movs.length === 1 ? "" : "s"}
+        ${g.movs.length} movimiento${g.movs.length === 1 ? "" : "s"}
       </div>
       <div class="sub-detail" id="${id}" hidden style="margin-top:10px;"></div>
     </div>`;
@@ -931,6 +1123,25 @@ async function registrarCobro(btn, { monto, tipoReal, detalleReal, medioReal, ca
     btn.disabled = false;
     btn.textContent = textoOriginal;
   }
+}
+
+/** Aviso de si este movimiento cabe o no en el presupuesto del mes — lo que
+ * decide si te va a mover la plata proyectada o si ya estaba contemplado.
+ * Un castigo incobrable casi nunca está presupuestado, y ahí conviene saber de
+ * antemano que va a bajar el patrimonio. */
+function avisoPresupuesto(categoria, monto) {
+  const mes = mesActual();
+  const meta = budgetForCategoria(mes, categoria, "Gasto") || 0;
+  const real = montoRealNeto("Gasto", categoria, mes);
+  if (meta <= 0) {
+    return `OJO: "${categoria}" no tiene presupuesto este mes, así que estos ${fmtCLP(monto)} van a bajar tu patrimonio.`;
+  }
+  const holgura = meta - real;
+  if (holgura >= monto) {
+    return `"${categoria}" tiene ${fmtCLP(holgura)} disponibles del presupuesto, así que esto ya estaba contemplado y no te mueve la proyección.`;
+  }
+  const exceso = monto - Math.max(0, holgura);
+  return `OJO: a "${categoria}" le quedan ${fmtCLP(Math.max(0, holgura))} de presupuesto, así que ${fmtCLP(exceso)} van por sobre lo presupuestado y bajan tu patrimonio.`;
 }
 
 /** Monta el formulario abono/castigo (las dos pestañas) dentro de `container`,
@@ -993,7 +1204,11 @@ function montarFormularioCobro(container, { defaultMonto, quienLabel, cuentasOpt
   container.querySelector(".btn-registrar-castigo").addEventListener("click", async (e) => {
     e.stopPropagation();
     const monto = Number(container.querySelector(".monto-castigo").value);
-    if (!confirm(`Se castigará ${fmtCLP(monto)} como incobrable de ${quienLabel} — quedará registrado como gasto real. ¿Continuar?`)) return;
+    if (!confirm(
+      `Se castigará ${fmtCLP(monto)} como incobrable de ${quienLabel} — quedará registrado como gasto real.\n\n` +
+      avisoPresupuesto(categoria, monto) +
+      `\n\n¿Continuar?`
+    )) return;
     await registrarCobro(e.currentTarget, {
       monto, tipoReal: "Gasto", medioReal: medioPendiente, detalleReal: `Castigo incobrable ${quienLabel}`,
       categoria, subcategoria, medioPendiente, venc, onRegistrado,
@@ -1001,78 +1216,83 @@ function montarFormularioCobro(container, { defaultMonto, quienLabel, cuentasOpt
   });
 }
 
-/** Un grupo "por cobrar": no le debes a un banco, alguien te debe a ti (un
- * préstamo que hiciste, o algo que le pagaste a alguien y te tiene que
- * devolver). Cada ítem del historial se puede pinchar y liquidar por separado
- * — así una persona no se mezcla con otra ni con otra compra del mismo grupo,
- * y queda claro quién te sigue debiendo qué. Abajo del todo sigue disponible
- * liquidar TODO lo que queda del grupo de una vez, para cuando te pagan todo junto. */
-function renderPanelCobrar(panel, grupo, totalCobrar) {
-  const { categoria, subcategoria } = categoriaDominante(grupo.movs);
+/** El panel de UNA PERSONA que te debe: su historial (el cobro original y todo
+ * lo que ya abonó o se castigó) y, abajo, el formulario para liquidar lo que le
+ * queda. Cada ítem del historial también se puede pinchar y liquidar por
+ * separado, para cuando te paga solo uno de varios cafés/préstamos sueltos. */
+function renderPanelCobrar(panel, hilo, totalCobrar) {
+  const { categoria, subcategoria } = categoriaDominante(hilo.movs);
   const cuentasOpts = cuentas.map((c) => `<option value="${c.nombre}"></option>`).join("");
   const onRegistrado = async () => { await loadData(); renderStats($("monthSelect").value); };
+  // El cobro original manda el medio y el vencimiento: los abonos tienen que
+  // caer en el mismo grupo para que lo netee, no en uno nuevo.
+  const origen = hilo.movs.find((m) => m.tipo === "Ingreso") || hilo.movs[0];
 
-  const movsOrdenados = grupo.movs.slice().sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+  const movsOrdenados = hilo.movs.slice().sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
   const detalle = movsOrdenados
     .map((m) => {
       const id = `cobItem${++pagoUid}`;
       m._formId = id;
+      const esBaja = m.tipo !== "Ingreso";
       return `
-        <div class="category-row-top cat-clickable" data-target="${id}" style="padding:5px 0;font-size:11.5px;">
+        <div class="category-row-top ${esBaja ? "" : "cat-clickable"}" ${esBaja ? "" : `data-target="${id}"`} style="padding:5px 0;font-size:11.5px;">
           <span style="color:var(--text-secondary)">
             <strong>${m.detalle || m.categoria}</strong>
             <span style="color:var(--text-muted)"> · ${m.fecha}</span>
+            ${esBaja ? '<span class="badge badge-good" style="margin-left:4px;">ya abonado</span>' : ""}
           </span>
-          <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
+          <span class="cat-amounts ${esBaja ? "" : "income"}">${esBaja ? "−" : ""}${fmtCLP(Math.abs(m.monto))}</span>
         </div>
-        <div class="sub-detail" id="${id}" hidden style="margin:6px 0 10px;"></div>`;
+        ${esBaja ? "" : `<div class="sub-detail" id="${id}" hidden style="margin:6px 0 10px;"></div>`}`;
     })
     .join("");
 
   panel.innerHTML = `
     <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:6px;">
-      <strong>${grupo.medio}</strong> te debe — pincha un ítem para registrar lo que te pagaron de ESE ítem puntual:
+      Historial de <strong>${hilo.persona}</strong> — pincha un cobro para liquidar ESE ítem puntual:
     </div>
     ${detalle}
 
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
       <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px;">
-        O liquida de una vez todo lo que queda pendiente de <strong>${grupo.medio}</strong> (${fmtCLP(totalCobrar)}):
+        O liquida de una vez todo lo que te debe <strong>${hilo.persona}</strong> (${fmtCLP(totalCobrar)}):
       </div>
       <div class="cobro-total-form"></div>
     </div>
   `;
 
-  movsOrdenados.forEach((m) => {
-    const top = panel.querySelector(`[data-target="${m._formId}"]`);
-    const sub = panel.querySelector(`#${m._formId}`);
-    top.addEventListener("click", (e) => {
-      e.stopPropagation();
-      sub.hidden = !sub.hidden;
-      if (!sub.hidden && !sub.dataset.listo) {
-        sub.dataset.listo = "1";
-        montarFormularioCobro(sub, {
-          defaultMonto: Math.abs(m.monto),
-          quienLabel: `${grupo.medio} (${m.detalle || m.categoria})`,
-          cuentasOpts,
-          categoria: m.categoria,
-          subcategoria: m.subcategoria || subcategoria,
-          medioPendiente: grupo.medio,
-          venc: grupo.venc,
-          onRegistrado,
-        });
-      }
+  movsOrdenados
+    .filter((m) => m.tipo === "Ingreso")
+    .forEach((m) => {
+      const top = panel.querySelector(`[data-target="${m._formId}"]`);
+      const sub = panel.querySelector(`#${m._formId}`);
+      top.addEventListener("click", (e) => {
+        e.stopPropagation();
+        sub.hidden = !sub.hidden;
+        if (!sub.hidden && !sub.dataset.listo) {
+          sub.dataset.listo = "1";
+          montarFormularioCobro(sub, {
+            defaultMonto: Math.abs(m.monto),
+            quienLabel: hilo.persona,
+            cuentasOpts,
+            categoria: m.categoria,
+            subcategoria: m.subcategoria || subcategoria,
+            medioPendiente: m.medioPago,
+            venc: m.fechaVencimiento || "",
+            onRegistrado,
+          });
+        }
+      });
     });
-  });
 
   montarFormularioCobro(panel.querySelector(".cobro-total-form"), {
     defaultMonto: totalCobrar,
-    quienLabel: grupo.medio,
+    quienLabel: hilo.persona,
     cuentasOpts,
     categoria,
     subcategoria,
-    medioPendiente: grupo.medio,
-    venc: grupo.venc,
+    medioPendiente: origen.medioPago,
+    venc: origen.fechaVencimiento || "",
     onRegistrado,
   });
 }
@@ -1504,6 +1724,9 @@ async function loadData() {
   cuentas = cuentasRows
     .filter((r) => r[0])
     .map(([nombre, saldo]) => ({ nombre, saldo: Number(saldo) || 0 }));
+
+  const { hilos } = separarPendientes(movimientos.filter((m) => m.estado === "Por pagar"));
+  filasDeHilo = new Set(hilos.flatMap((h) => h.movs.filter((m) => m.tipo !== "Ingreso").map((m) => m.fila)));
 }
 
 async function init() {
@@ -1528,6 +1751,15 @@ async function init() {
   $("toggleIngresoTipo").addEventListener("click", () => {
     $("categoryListIngreso").hidden = !$("categoryListIngreso").hidden;
   });
+  for (const [btn, panel] of [
+    ["toggleFueraPpto", "fueraPptoDetalle"],
+    ["togglePorPagar", "porPagarPeriodos"],
+    ["togglePorCobrar", "porCobrarPersonas"],
+  ]) {
+    $(btn).addEventListener("click", () => {
+      $(panel).hidden = !$(panel).hidden;
+    });
+  }
 
   // Cada "?" abre/cierra la explicación de SU número (el texto lo llena
   // renderIndicadores, con los montos reales del mes mirado).

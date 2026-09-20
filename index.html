@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202609152156">
+<link rel="stylesheet" href="css/styles.css?v=202609201257">
 </head>
 <body>
 
@@ -91,25 +91,34 @@
     </div>
 
     <div class="card">
-      <div class="dual-stat">
-        <div>
-          <div class="stat-label">Por pagar</div>
-          <div class="stat-value" style="color:var(--serious)" id="statPorPagar">$0</div>
+      <div class="card-title">Fuera de presupuesto</div>
+      <div class="category-row">
+        <div class="category-row-top cat-clickable" id="toggleFueraPpto">
+          <span class="cat-name">Gastado de más este mes</span>
+          <span class="cat-amounts" id="statFueraPpto"></span>
         </div>
-        <div>
-          <div class="stat-label">Por cobrar</div>
-          <div class="stat-value income" id="statPorCobrar">$0</div>
-        </div>
+        <div class="cat-detail" id="fueraPptoDetalle" hidden></div>
       </div>
+    </div>
 
-      <div class="venc-header">
-        <span>Vence</span>
-        <span class="venc-montos">
-          <span class="venc-monto">Por pagar</span>
-          <span class="venc-monto">Por cobrar</span>
-        </span>
+    <div class="card">
+      <div class="category-row">
+        <div class="category-row-top cat-clickable" id="togglePorPagar">
+          <span class="cat-name">Por pagar</span>
+          <span class="cat-amounts" style="color:var(--serious)" id="statPorPagar">$0</span>
+        </div>
+        <div class="cat-detail" id="porPagarPeriodos" hidden></div>
       </div>
-      <div id="porPagarPeriodos"></div>
+    </div>
+
+    <div class="card">
+      <div class="category-row">
+        <div class="category-row-top cat-clickable" id="togglePorCobrar">
+          <span class="cat-name">Por cobrar</span>
+          <span class="cat-amounts income" id="statPorCobrar">$0</span>
+        </div>
+        <div class="cat-detail" id="porCobrarPersonas" hidden></div>
+      </div>
     </div>
   </div>
 </div>
@@ -137,10 +146,10 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202609152156"></script>
+<script src="js/config.js?v=202609201257"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202609152156"></script>
-<script src="js/anim.js?v=202609152156"></script>
-<script src="js/dashboard.js?v=202609152156"></script>
+<script src="js/sheets-auth.js?v=202609201257"></script>
+<script src="js/anim.js?v=202609201257"></script>
+<script src="js/dashboard.js?v=202609201257"></script>
 </body>
 </html>
