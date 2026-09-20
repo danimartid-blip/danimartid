@@ -7,6 +7,20 @@ function fmtCLP(n) {
   return sign + "$" + Math.round(Math.abs(n)).toLocaleString("es-CL");
 }
 
+/** Aviso corto abajo de la pantalla (mismo de registro/cuentas/presupuesto).
+ * OJO: el Dashboard lo llamaba sin tenerlo definido, así que cada aviso tiraba
+ * un ReferenceError. Como varios de esos llamados están dentro de un try, el
+ * error saltaba al catch, donde OTRO showToast volvía a tirar y se llevaba
+ * puestas las líneas que devolvían el botón a su estado normal: la pantalla
+ * quedaba congelada en "Guardando…" con el cambio ya guardado. */
+function showToast(msg, isError = false) {
+  const t = $("toast");
+  if (!t) return;
+  t.textContent = msg;
+  t.className = "toast show" + (isError ? " error" : "");
+  setTimeout(() => (t.className = "toast"), 2600);
+}
+
 
 let movimientos = []; // { fecha, año, mes, tipo, categoria, subcategoria, medioPago, estado, monto, detalle }
 let presupuestoRows = []; // { mes, tipo, categoria, subcategoria, monto }
@@ -1151,9 +1165,19 @@ async function registrarCobro(btn, { monto, tipoReal, detalleReal, medioReal, ca
     await onRegistrado();
   } catch (err) {
     console.error(err);
+    showToast(err?.message || "No se pudo registrar", true);
+  } finally {
+    // Igual que en el editor: si falla el refresco DESPUÉS de haber escrito, el
+    // botón tiene que volver igual — nunca quedarse en "Registrando…".
     btn.disabled = false;
     btn.textContent = textoOriginal;
   }
+}
+
+/** Relee la planilla y repinta el dashboard, después de guardar algo. */
+async function refrescarVista() {
+  await loadData();
+  renderStats($("monthSelect").value);
 }
 
 /** Aviso de si este movimiento cabe o no en el presupuesto del mes — lo que
@@ -1254,7 +1278,7 @@ function montarFormularioCobro(container, { defaultMonto, quienLabel, cuentasOpt
 function renderPanelCobrar(panel, hilo, totalCobrar) {
   const { categoria, subcategoria } = categoriaDominante(hilo.movs);
   const cuentasOpts = cuentas.map((c) => `<option value="${c.nombre}"></option>`).join("");
-  const onRegistrado = async () => { await loadData(); renderStats($("monthSelect").value); };
+  const onRegistrado = refrescarVista;
   // El cobro original manda el medio y el vencimiento: los abonos tienen que
   // caer en el mismo grupo para que lo netee, no en uno nuevo.
   const origen = hilo.movs.find((m) => m.tipo === "Ingreso") || hilo.movs[0];
@@ -1410,14 +1434,20 @@ function wireEditoresMov(panel, movs) {
             ],
             "RAW"
           );
+          // Desde acá el cambio YA quedó guardado en la planilla: si refrescar
+          // la vista falla (ej. se venció la sesión), el aviso tiene que decir
+          // eso y no "no se pudo guardar", que sería mentira.
           showToast("Movimiento corregido");
-          await loadData();
-          renderStats($("monthSelect").value);
+          btn.textContent = "Guardado ✓";
+          await refrescarVista();
         } catch (err) {
           console.error(err);
-          showToast("No se pudo guardar", true);
+          showToast(err?.message || "No se pudo guardar", true);
+        } finally {
+          // Pase lo que pase el botón vuelve: si algo falla después de guardar,
+          // la pantalla no puede quedar congelada en "Guardando…".
           btn.disabled = false;
-          btn.textContent = "Guardar cambios";
+          if (btn.textContent === "Guardando…") btn.textContent = "Guardar cambios";
         }
       });
     });
@@ -1524,10 +1554,11 @@ function renderPanelPago(panel, grupo, total) {
         );
       }
 
-      await loadData();
-      renderStats($("monthSelect").value);
+      await refrescarVista();
     } catch (err) {
       console.error(err);
+      showToast(err?.message || "No se pudo registrar el pago", true);
+    } finally {
       btn.disabled = false;
       btn.textContent = "Registrar pago";
     }

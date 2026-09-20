@@ -48,26 +48,49 @@ async function ensureTokenClient() {
       client_id: window.APP_CONFIG.CLIENT_ID,
       scope: window.APP_CONFIG.SCOPES,
       callback: () => {}, // overridden per-call below
+      // GIS avisa acá cuando el popup no se pudo abrir. Se delega al handler de
+      // la llamada en curso (ver getAccessToken).
+      error_callback: (err) => tokenClient?._onError?.(err),
     });
   }
   return tokenClient;
 }
 
-/** Returns a valid access token, prompting the Google login popup if needed. */
+const ESPERA_LOGIN_MS = 60_000;
+
+/** Returns a valid access token, prompting the Google login popup if needed.
+ *
+ * OJO con el camino de error: si el navegador BLOQUEA el popup (pasa en el
+ * celular cuando la renovación no nace de un toque directo, ej. al recargar
+ * datos después de guardar), GIS no llama nunca al callback. Sin el
+ * error_callback y el timeout de abajo, esta promesa queda pendiente para
+ * siempre y la pantalla se congela sin ningún error — un botón "Guardando…"
+ * que no vuelve nunca. Pase lo que pase, esto resuelve o rechaza. */
 async function getAccessToken({ interactive = true } = {}) {
   const cached = loadStoredToken();
   if (cached) return cached.accessToken;
 
   const client = await ensureTokenClient();
   return new Promise((resolve, reject) => {
-    client.callback = (resp) => {
-      if (resp.error) {
-        reject(new Error(resp.error_description || resp.error));
-        return;
-      }
-      storeToken(resp);
-      resolve(resp.access_token);
+    let timer = null;
+    const terminar = (fn) => {
+      clearTimeout(timer);
+      client.callback = () => {};
+      client._onError = null;
+      fn();
     };
+    timer = setTimeout(
+      () => terminar(() => reject(new Error("Se venció la sesión de Google y no se pudo renovar. Recarga la página para volver a entrar."))),
+      ESPERA_LOGIN_MS
+    );
+    client.callback = (resp) =>
+      terminar(() => {
+        if (resp.error) return reject(new Error(resp.error_description || resp.error));
+        storeToken(resp);
+        resolve(resp.access_token);
+      });
+    client._onError = (err) =>
+      terminar(() => reject(new Error(err?.message || "No se pudo abrir el login de Google. Recarga la página.")));
     client.requestAccessToken({ prompt: interactive ? "" : "none" });
   });
 }
