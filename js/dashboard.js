@@ -808,29 +808,60 @@ function renderFueraPresupuesto(gasto, proyecta, nombreMes) {
   const total = $("statFueraPpto");
   const detalle = $("fueraPptoDetalle");
   if (!proyecta || gasto.excedido <= 0) {
-    total.innerHTML = `<span class="meta">${proyecta ? "nada, vas dentro del presupuesto" : `${nombreMes} no se proyecta`}</span>`;
-    detalle.innerHTML = "";
+    total.className = "cat-amounts";
+    total.innerHTML = `<span class="meta">${proyecta ? "vas dentro del presupuesto" : `${nombreMes} no se proyecta`}</span>`;
+    detalle.innerHTML = '<div class="skeleton no-spinner" style="padding:8px 0;">Nada fuera de presupuesto este mes</div>';
     return;
   }
-  total.innerHTML = `${fmtCLP(gasto.excedido)} <span class="meta">de más</span>`;
+
   total.className = "cat-amounts expense";
+  total.innerHTML = fmtCLP(gasto.excedido);
+
+  const sinPpto = gasto.excesos.filter((e) => e.meta <= 0);
+  const resumen =
+    `${gasto.excesos.length} categoría${gasto.excesos.length === 1 ? "" : "s"} por sobre lo presupuestado` +
+    (sinPpto.length ? `, ${sinPpto.length} de ellas sin presupuesto` : "");
+
+  // Los excesos de menos de $1.000 (redondeos, un ahorro que quedó $37 arriba)
+  // van juntos al final: son ruido y tapan lo que sí importa. Igual se suman,
+  // para que el detalle siempre cuadre con el total de arriba.
+  const CHICO = 1000;
+  const grandes = gasto.excesos.filter((e) => e.exceso >= CHICO);
+  const chicos = gasto.excesos.filter((e) => e.exceso < CHICO);
+
   detalle.innerHTML =
-    `<div style="font-size:11.5px;color:var(--text-muted);margin:8px 0 6px;line-height:1.5;">
-       Esto ya salió de tu plata y no vuelve a la proyección. Lo que está <strong>sin presupuesto</strong>
-       es lo que ni siquiera tenías contemplado este mes.
+    `<div style="font-size:11.5px;color:var(--text-muted);margin:10px 0 4px;line-height:1.5;">
+       ${resumen}. Esta plata ya salió y no vuelve a la proyección.
      </div>` +
-    gasto.excesos
-      .map(
-        (e) => `<div class="category-row-top" style="padding:6px 0;font-size:12px;">
-          <span style="color:var(--text-secondary)">${e.cat}
-            ${e.meta <= 0 ? '<span class="badge badge-critical" style="margin-left:4px;">sin presupuesto</span>' : ""}
-          </span>
-          <span class="cat-amounts expense">${fmtCLP(e.exceso)}
-            <span class="meta">${e.meta > 0 ? `gastaste ${fmtCLP(e.real)} de ${fmtCLP(e.meta)}` : `gastaste ${fmtCLP(e.real)}`}</span>
-          </span>
-        </div>`
-      )
-      .join("");
+    grandes
+      .map((e) => {
+        // Cuánto de lo gastado es exceso, para que la barra se lea de un vistazo:
+        // sin presupuesto se llena entera (todo era de más).
+        const pctExceso = e.real > 0 ? Math.round((e.exceso / e.real) * 100) : 100;
+        return `
+          <div style="padding:10px 0 2px;border-top:1px solid var(--border);">
+            <div class="category-row-top">
+              <span class="cat-name" style="font-size:13px;">${e.cat}</span>
+              <span class="cat-amounts expense">+${fmtCLP(e.exceso)}</span>
+            </div>
+            <div class="bar-track bar-track-sub">
+              <div class="bar-fill over" data-w="${Math.min(pctExceso, 100)}" style="width:0%"></div>
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:5px;">
+              ${e.meta > 0
+                ? `gastaste ${fmtCLP(e.real)} de ${fmtCLP(e.meta)} presupuestados`
+                : `<span class="badge badge-critical">sin presupuesto</span> gastaste ${fmtCLP(e.real)}`}
+            </div>
+          </div>`;
+      })
+      .join("") +
+    (chicos.length
+      ? `<div class="category-row-top" style="padding:10px 0 2px;border-top:1px solid var(--border);font-size:11.5px;">
+           <span style="color:var(--text-muted)">otras ${chicos.length} categoría${chicos.length === 1 ? "" : "s"} por menos de ${fmtCLP(CHICO)}</span>
+           <span class="cat-amounts expense">+${fmtCLP(chicos.reduce((s, e) => s + e.exceso, 0))}</span>
+         </div>`
+      : "");
+  Anim.barras(detalle);
 }
 
 /** Los tres indicadores de arriba — los que se usan para decidir. Salen de la
@@ -1297,28 +1328,117 @@ function renderPanelCobrar(panel, hilo, totalCobrar) {
   });
 }
 
+/** "2026-10-10" -> "10-10-2026", el formato en que la planilla guarda el
+ * vencimiento (mismo que isoAVencimiento en registro.js). */
+function isoAVencimiento(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${Number(d)}-${Number(m)}-${y}`;
+}
+
+/** "10-10-2026" -> "2026-10-10", para poder llenar un <input type="date">. */
+function vencimientoAIso(venc) {
+  const d = parseFechaVenc(venc);
+  if (!d) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Un movimiento del estado de cuenta, pinchable para corregirlo. */
+function filaMovEditable(m) {
+  const id = `edit${++pagoUid}`;
+  m._editId = id;
+  return `
+    <div class="category-row-top cat-clickable" data-target="${id}" style="padding:5px 0;font-size:11.5px;">
+      <span style="color:var(--text-secondary)">
+        <strong>${m.detalle || m.categoria}</strong>
+        <span style="color:var(--text-muted)"> · ${m.fecha}</span>
+      </span>
+      <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
+    </div>
+    <div class="sub-detail" id="${id}" hidden style="margin:6px 0 10px;"></div>`;
+}
+
+/** El editor de un movimiento ya guardado — para los typeos de siempre: una
+ * fecha de vencimiento mal puesta que lo deja "atrasado", un monto cambiado,
+ * un detalle que no se entiende. Solo toca las tres columnas que se editan
+ * (Monto, Detalle, Fecha_vencimiento); lo demás queda como está. */
+function wireEditoresMov(panel, movs) {
+  for (const m of movs) {
+    const top = panel.querySelector(`[data-target="${m._editId}"]`);
+    const caja = panel.querySelector(`#${m._editId}`);
+    if (!top || !caja) continue;
+    top.addEventListener("click", (e) => {
+      e.stopPropagation();
+      caja.hidden = !caja.hidden;
+      if (caja.hidden || caja.dataset.listo) return;
+      caja.dataset.listo = "1";
+      caja.innerHTML = `
+        <label>Vence el</label>
+        <input type="date" class="edit-venc" value="${vencimientoAIso(m.fechaVencimiento)}">
+        <label>Monto</label>
+        <input type="number" inputmode="numeric" class="edit-monto" value="${Math.round(Math.abs(m.monto))}">
+        <label>Detalle</label>
+        <input type="text" class="edit-detalle" value="${escapeAttr(m.detalle || "")}">
+        <button class="btn-primary edit-guardar" style="margin-top:12px;">Guardar cambios</button>`;
+
+      caja.querySelector(".edit-guardar").addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        const btn = ev.currentTarget;
+        const vencIso = caja.querySelector(".edit-venc").value;
+        const monto = Number(caja.querySelector(".edit-monto").value) || 0;
+        const detalle = caja.querySelector(".edit-detalle").value.trim();
+        if (monto <= 0) return showToast("El monto tiene que ser mayor que cero", true);
+        if (!detalle) return showToast("Falta el detalle", true);
+
+        const signado = m.tipo === "Gasto" ? -Math.abs(monto) : Math.abs(monto);
+        const venc = isoAVencimiento(vencIso);
+        const cambios = [];
+        if (signado !== m.monto) cambios.push(`monto: ${fmtCLP(Math.abs(m.monto))} → ${fmtCLP(monto)}`);
+        if (detalle !== (m.detalle || "")) cambios.push(`detalle: "${m.detalle}" → "${detalle}"`);
+        if (venc !== (m.fechaVencimiento || "")) cambios.push(`vence: ${m.fechaVencimiento || "sin fecha"} → ${venc || "sin fecha"}`);
+        if (cambios.length === 0) return showToast("No cambiaste nada");
+        if (!confirm(`Se va a corregir este movimiento:\n\n${cambios.join("\n")}\n\n¿Continuar?`)) return;
+
+        btn.disabled = true;
+        btn.textContent = "Guardando…";
+        try {
+          await window.SheetsApi.batchUpdateValues(
+            [
+              { range: `Movimientos!I${m.fila}`, values: [[signado]] },
+              { range: `Movimientos!J${m.fila}`, values: [[detalle]] },
+              { range: `Movimientos!K${m.fila}`, values: [[venc]] },
+            ],
+            "RAW"
+          );
+          showToast("Movimiento corregido");
+          await loadData();
+          renderStats($("monthSelect").value);
+        } catch (err) {
+          console.error(err);
+          showToast("No se pudo guardar", true);
+          btn.disabled = false;
+          btn.textContent = "Guardar cambios";
+        }
+      });
+    });
+  }
+}
+
 function renderPanelPago(panel, grupo, total) {
-  const detalle = grupo.movs
-    .slice()
-    .sort((a, b) => Math.abs(b.monto) - Math.abs(a.monto))
-    .slice(0, 8)
-    .map(
-      (m) => `<div class="category-row-top" style="padding:5px 0;font-size:11.5px;">
-        <span style="color:var(--text-secondary)">
-          <strong>${m.detalle || m.categoria}</strong>
-          <span style="color:var(--text-muted)"> · ${m.fecha}</span>
-        </span>
-        <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
-      </div>`
-    )
-    .join("");
-  const resto = grupo.movs.length > 8 ? `<div style="font-size:11px;color:var(--text-muted);padding-top:4px;">+ ${grupo.movs.length - 8} más…</div>` : "";
+  const ordenados = grupo.movs.slice().sort((a, b) => Math.abs(b.monto) - Math.abs(a.monto));
+  const visibles = ordenados.slice(0, 8);
+  const ocultos = ordenados.slice(8);
+  const resto = ocultos.length
+    ? `<div class="resto-movs" hidden>${ocultos.map(filaMovEditable).join("")}</div>
+       <button type="button" class="btn-link ver-todos" style="font-size:11px;padding:4px 0;">+ ver los otros ${ocultos.length}</button>`
+    : "";
 
   panel.innerHTML = `
     <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:6px;">
       Estado de cuenta de <strong>${grupo.medio}</strong> con vencimiento <strong>${grupo.venc}</strong>
+      — pincha un movimiento para corregirlo.
     </div>
-    ${detalle}${resto}
+    ${visibles.map(filaMovEditable).join("")}${resto}
     <label style="margin-top:12px;">¿Cuánto pagaste?</label>
     <input type="number" inputmode="numeric" class="monto-pagado" value="${Math.round(total)}">
     <div class="dif-pago" style="font-size:12px;margin:8px 0;color:var(--text-muted);"></div>
@@ -1331,6 +1451,17 @@ function renderPanelPago(panel, grupo, total) {
       </select>
     </div>
     <button class="btn-primary registrar-pago" style="margin-top:14px;">Registrar pago</button>`;
+
+  const verTodos = panel.querySelector(".ver-todos");
+  if (verTodos) {
+    verTodos.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const caja = panel.querySelector(".resto-movs");
+      caja.hidden = !caja.hidden;
+      verTodos.textContent = caja.hidden ? `+ ver los otros ${ocultos.length}` : "− ocultar";
+    });
+  }
+  wireEditoresMov(panel, ordenados);
 
   const input = panel.querySelector(".monto-pagado");
   const difEl = panel.querySelector(".dif-pago");
