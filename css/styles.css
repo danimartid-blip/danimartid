@@ -1108,3 +1108,9 @@ nav.tabbar a { font-size: 9px; padding-left: 1px; padding-right: 1px; }
   flex-wrap: wrap;
 }
 .carga-base .dato { font-size: 16px; font-weight: 800; letter-spacing: -0.02em; }
+
+/* Un tinte por mundo: el hipotecario es deuda "buena" (azul), el consumo es la
+ * cara y tiene que verse distinta. Cualquier tipo nuevo cae en el neutro. */
+.hero-box-mundo { --box-tint: var(--text-muted); }
+.hero-box-hipotecario { --box-tint: var(--series-1); }
+.hero-box-consumo { --box-tint: var(--expense); }

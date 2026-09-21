@@ -164,11 +164,9 @@ function render() {
 
   Anim.numero($("statDeuda"), deuda, fmtCorto);
   $("statDeuda").title = fmtCLP(deuda);
-  $("statDeudaDetalle").textContent = `${creditos.length} créditos · ${fmtCLP(sumar("interesQueFalta"))} de interés por delante`;
-  Anim.numero($("statDividendo"), dividendo, fmtCLP);
-  Anim.numero($("statCapital"), capital, fmtCLP);
-  $("statCapitalPct").textContent = `${pct((capital / dividendo) * 100, 0)} de lo que pagas`;
+  $("statDeudaDetalle").textContent = `${fmtCLP(sumar("interesQueFalta"))} de interés por delante`;
   $("ufHoy").textContent = `UF ${fmtCLP(uf.valor)} · ${uf.fecha}`;
+  renderMundos(estados);
 
   // ---------- apertura del mes ----------
   const trozos = [
@@ -197,6 +195,50 @@ function render() {
   renderCreditos(estados);
   renderCargaFinanciera(dividendo);
   Anim.barras(document.body);
+}
+
+/** Un cuadro por tipo de crédito. Hipotecario y consumo son **mundos
+ * distintos** y no se suman en un solo número: la cuota del hipotecario es un
+ * dividendo (barata, en UF, y compra una casa), la del consumo es otra cosa
+ * (cara, en pesos, y no deja nada). Mezclarlas en un "dividendos del mes" era
+ * juntar peras con manzanas. */
+function renderMundos(estados) {
+  const porTipo = new Map();
+  for (const e of estados) {
+    const tipo = e.credito.tipo || "Crédito";
+    if (!porTipo.has(tipo)) porTipo.set(tipo, []);
+    porTipo.get(tipo).push(e);
+  }
+
+  // Los más caros primero: si hay deuda cara, que salte a la vista.
+  const grupos = [...porTipo.entries()].sort(
+    (a, b) => Math.max(...b[1].map((e) => e.credito.tasaActual)) - Math.max(...a[1].map((e) => e.credito.tasaActual))
+  );
+
+  const grid = $("heroGrid");
+  grid.querySelectorAll(".hero-box-mundo").forEach((n) => n.remove());
+
+  for (const [tipo, lista] of grupos) {
+    const saldo = lista.reduce((s, e) => s + enPesos(e.credito, e.est.saldo), 0);
+    const cuota = lista.reduce((s, e) => s + enPesos(e.credito, e.est.dividendoTotal), 0);
+    // "Dividendo" es la palabra correcta solo para los hipotecarios.
+    const comoSeLlama = /hipotec/i.test(tipo) ? "dividendo" : "cuota";
+    const box = document.createElement("div");
+    box.className = `hero-box hero-box-mundo hero-box-${normClase(tipo)}${grupos.length === 1 ? " hero-box-wide" : ""}`;
+    box.innerHTML = `
+      <div class="hero-head"><span class="stat-label">${tipo}${lista.length > 1 ? "s" : ""}</span></div>
+      <div class="stat-value hero-num-sm">${fmtCorto(saldo)}</div>
+      <div class="hero-estado">${comoSeLlama} ${fmtCLP(cuota)}</div>`;
+    grid.appendChild(box);
+  }
+}
+
+/** "Hipotecario" -> "hipotecario"; sirve para la clase CSS del tinte. */
+function normClase(s) {
+  return norm(s)
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-");
 }
 
 /** ¿A cuál le abono primero? La respuesta correcta es "al de tasa más alta", y

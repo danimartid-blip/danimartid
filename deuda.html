@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202609211955">
+<link rel="stylesheet" href="css/styles.css?v=202609212042">
 </head>
 <body>
 
@@ -32,29 +32,22 @@
   <div id="content" hidden>
 
     <div class="card card-hero">
-      <div class="hero-grid">
+      <div class="hero-grid" id="heroGrid">
         <div class="hero-box hero-box-deuda hero-box-wide">
           <div class="hero-head"><span class="stat-label">Debes hoy</span></div>
           <div class="stat-value hero-num expense" id="statDeuda">$0</div>
           <div class="hero-estado" id="statDeudaDetalle"></div>
         </div>
-        <div class="hero-box hero-box-patrimonio">
-          <div class="hero-head"><span class="stat-label">Dividendos del mes</span></div>
-          <div class="stat-value hero-num-sm" id="statDividendo">$0</div>
-        </div>
-        <div class="hero-box hero-box-saldo">
-          <div class="hero-head"><span class="stat-label">De eso, ahorras</span></div>
-          <div class="stat-value hero-num-sm income" id="statCapital">$0</div>
-          <div class="hero-estado" id="statCapitalPct"></div>
-        </div>
+        <!-- Un cuadro por tipo de crédito (hipotecario / consumo): son mundos
+             distintos y no se mezclan. Los arma renderHero() en deuda.js. -->
       </div>
     </div>
 
     <div class="card">
-      <div class="card-title">En qué se va tu dividendo</div>
+      <div class="card-title">En qué se va lo que pagas</div>
       <p class="card-sub">
-        Solo el interés y los seguros son gasto de verdad. El capital no se pierde:
-        cambia de bolsillo y se vuelve tuyo.
+        Sumando los tres créditos. Solo el interés y los seguros son gasto de verdad:
+        el capital no se pierde, baja tu deuda.
       </p>
       <div class="apertura-bar" id="aperturaBar"></div>
       <div class="apertura-leyenda" id="aperturaLeyenda"></div>
@@ -102,10 +95,10 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202609211955"></script>
+<script src="js/config.js?v=202609212042"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202609211955"></script>
-<script src="js/anim.js?v=202609211955"></script>
-<script src="js/deuda.js?v=202609211955"></script>
+<script src="js/sheets-auth.js?v=202609212042"></script>
+<script src="js/anim.js?v=202609212042"></script>
+<script src="js/deuda.js?v=202609212042"></script>
 </body>
 </html>
