@@ -132,6 +132,17 @@ async function readRange(range) {
   return data.values || [];
 }
 
+/** Igual que readRange pero pidiendo los valores SIN formatear: los números
+ * llegan como número de verdad y no como el texto que muestra la planilla.
+ * Necesario para columnas con decimales — con el formato chileno, una tasa de
+ * 0,03064 llega como el string "0,03064" y Number() de eso es NaN. */
+async function readRangeRaw(range) {
+  const data = await sheetsFetch(
+    `/values/${encodeURIComponent(range)}?valueRenderOption=UNFORMATTED_VALUE`
+  );
+  return data.values || [];
+}
+
 /** Appends a single row to the end of a sheet/table.
  * mode "RAW" guarda los strings tal cual — necesario para valores como "2026-09",
  * que con USER_ENTERED Sheets interpreta como fecha y convierte a número de serie. */
@@ -188,4 +199,4 @@ function requireAuthOrRedirect() {
 }
 
 window.SheetsAuth = { getAccessToken, isLoggedIn, logout, requireAuthOrRedirect };
-window.SheetsApi = { readRange, appendRow, appendRows, updateRange, batchUpdateValues };
+window.SheetsApi = { readRange, readRangeRaw, appendRow, appendRows, updateRange, batchUpdateValues };

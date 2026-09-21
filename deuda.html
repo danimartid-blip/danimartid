@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Presupuesto — Finanzas</title>
+<title>Deuda — Finanzas</title>
 <meta name="theme-color" content="#0e7c6b">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
@@ -13,47 +13,62 @@
 <body>
 
 <header class="topbar">
-  <h1>Presupuesto</h1>
-  <input type="month" id="monthPicker" class="native">
+  <h1>Deuda</h1>
+  <span class="uf-chip" id="ufHoy"></span>
 </header>
 
 <div class="container">
 
-  <div id="loadingSkeleton" class="skeleton" hidden>Cargando…</div>
+  <div id="loadingSkeleton" class="skeleton" hidden>Calculando tus saldos…</div>
+
+  <div id="vacio" class="card" hidden>
+    <div class="card-title">Todavía no hay créditos cargados</div>
+    <p class="card-sub">
+      Los créditos viven en la pestaña <strong>Creditos</strong> de tu planilla: capital, tasa,
+      plazo y el saldo de referencia que da el banco. Con eso esta página calcula sola el resto.
+    </p>
+  </div>
 
   <div id="content" hidden>
-    <div class="card">
-      <div class="balance-equation">
-        <div class="balance-term">
-          <div class="stat-label">Ingreso ppto.</div>
-          <div class="stat-value income" id="statIngresoPpto">$0</div>
+
+    <div class="card card-hero">
+      <div class="hero-grid">
+        <div class="hero-box hero-box-deuda hero-box-wide">
+          <div class="hero-head"><span class="stat-label">Debes hoy</span></div>
+          <div class="stat-value hero-num expense" id="statDeuda">$0</div>
+          <div class="hero-estado" id="statDeudaUF"></div>
         </div>
-        <div class="balance-op">−</div>
-        <div class="balance-term">
-          <div class="stat-label">Gasto ppto.</div>
-          <div class="stat-value expense" id="statGastoPpto">$0</div>
+        <div class="hero-box hero-box-patrimonio">
+          <div class="hero-head"><span class="stat-label">Dividendos del mes</span></div>
+          <div class="stat-value hero-num-sm" id="statDividendo">$0</div>
         </div>
-        <div class="balance-op">=</div>
-        <div class="balance-term">
-          <div class="stat-label">Resultado</div>
-          <div class="stat-value" id="statResultado">$0</div>
+        <div class="hero-box hero-box-saldo">
+          <div class="hero-head"><span class="stat-label">De eso, ahorras</span></div>
+          <div class="stat-value hero-num-sm income" id="statCapital">$0</div>
+          <div class="hero-estado" id="statCapitalPct"></div>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <div class="card-title">Gastos presupuestados</div>
-      <div id="gastoList"></div>
+      <div class="card-title">En qué se va tu dividendo</div>
+      <p class="card-sub">
+        Solo el interés y los seguros son gasto de verdad. El capital no se pierde:
+        cambia de bolsillo y se vuelve tuyo.
+      </p>
+      <div class="apertura-bar" id="aperturaBar"></div>
+      <div class="apertura-leyenda" id="aperturaLeyenda"></div>
     </div>
+
+    <div id="listaCreditos"></div>
 
     <div class="card">
-      <div class="card-title">Ingresos presupuestados</div>
-      <div id="ingresoList"></div>
+      <div class="card-title">Carga financiera</div>
+      <div id="cargaBody"></div>
     </div>
+
   </div>
 </div>
-
-<div class="toast" id="toast"></div>
 
 <nav class="tabbar">
   <a href="index.html">
@@ -64,7 +79,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8.2v7.6M8.2 12h7.6"/></svg>
     Registrar
   </a>
-  <a href="presupuesto.html" class="active">
+  <a href="presupuesto.html">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3.2V12l6.2 6.2"/></svg>
     Presupuesto
   </a>
@@ -76,7 +91,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
     Hábitos
   </a>
-  <a href="deuda.html">
+  <a href="deuda.html" class="active">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V9.5L12 4l7 5.5V21"/><path d="M9.5 21v-6h5v6"/></svg>
     Deuda
   </a>
@@ -85,6 +100,7 @@
 <script src="js/config.js?v=202609211530"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="js/sheets-auth.js?v=202609211530"></script>
-<script src="js/presupuesto.js?v=202609211530"></script>
+<script src="js/anim.js?v=202609211530"></script>
+<script src="js/deuda.js?v=202609211530"></script>
 </body>
 </html>

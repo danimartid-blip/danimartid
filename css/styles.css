@@ -946,3 +946,136 @@ select.native, input[type="month"] {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* ==================== Deuda ==================== */
+
+/* Valor de la UF del día, arriba a la derecha — todo en esta página se calcula
+ * con él, así que conviene tenerlo a la vista. */
+.uf-chip {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  padding: 5px 10px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.hero-box-deuda { --box-tint: var(--serious); }
+
+/* Apertura del dividendo: una sola barra partida en capital / interés / seguros,
+ * para que se vea de un vistazo cuánto de lo que pagas es realmente gasto. */
+.apertura-bar {
+  display: flex;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--surface-2);
+  margin-top: 4px;
+}
+.apertura-seg { height: 100%; transition: width .5s var(--ease); }
+.seg-capital { background: var(--income); }
+.seg-interes { background: var(--expense); }
+.seg-seguros { background: var(--text-muted); }
+.legend-dot.seg-capital, .legend-dot.seg-interes, .legend-dot.seg-seguros {
+  width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; margin-top: 4px;
+}
+.apertura-leyenda {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.apertura-item { display: flex; gap: 7px; align-items: flex-start; min-width: 0; }
+.apertura-monto { font-size: 15px; font-weight: 800; letter-spacing: -0.02em; }
+.apertura-label { font-size: 11px; font-weight: 700; color: var(--text-muted); }
+
+/* ---- ficha de cada crédito ---- */
+.credito-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.credito-tasa {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+.credito-saldo {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.credito-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text-muted);
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+/* Aviso de que se acabó la tasa fija: es la noticia más cara de la página,
+ * no puede quedar como una línea más de texto gris. */
+.aviso-tasa {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--serious) 12%, transparent);
+  border-left: 3px solid var(--serious);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.credito-detalle-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--accent);
+  cursor: pointer;
+}
+.credito-detalle-toggle .chev { transition: transform .2s var(--ease); font-size: 17px; }
+.credito-detalle-toggle.abierto .chev { transform: rotate(90deg); }
+
+.detalle-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+.detalle-grid .dato { font-size: 15px; font-weight: 800; letter-spacing: -0.02em; }
+
+.prepago-tabla { margin-top: 16px; }
+.prepago-titulo { font-size: 12px; font-weight: 750; margin-bottom: 8px; }
+.prepago-fila {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.prepago-fila:last-of-type { border-bottom: 0; }
+.prepago-monto { font-size: 13.5px; font-weight: 750; white-space: nowrap; }
+.prepago-resultado { text-align: right; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.prepago-resultado strong { font-size: 13px; }
+
+.carga-fila { display: flex; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
+.carga-fila > div { min-width: 0; }
+.carga-fila > div:last-child { text-align: right; }
+
+/* Con 6 pestañas el ancho por ítem queda justo en pantallas de 360px. */
+nav.tabbar { gap: 2px; }
+nav.tabbar a { font-size: 9px; padding-left: 1px; padding-right: 1px; }
