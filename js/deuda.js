@@ -338,49 +338,100 @@ function renderCreditos(estados) {
   }
 }
 
+const norm = (s) => (s || "").trim().toLowerCase();
+
+/** Categorías donde un Ingreso es alguien devolviéndote una cuota (el arriendo
+ * que cubre el dividendo, la mitad del préstamo). No es ingreso nuevo: baja el
+ * costo de la deuda, y por eso se resta de las cuotas en vez de sumarse arriba.
+ * Sumarlo a los ingresos Y restarlo de las cuotas sería contarlo dos veces. */
+const CAT_DEVOLUCION_DEUDA = new Set(["dividendos", "pago prestamo"]);
+
+/** Plata tuya cambiándose de bolsillo: retiros de tu propio ahorro o del bono.
+ * Entra a la cuenta corriente, pero no es plata nueva — si contara como
+ * ingreso, sacar del ahorro "mejoraría" tu carga financiera, que es al revés. */
+function esTraspasoPropio(m) {
+  return norm(m.categoria) === "ahorro" || norm(m.subcategoria).startsWith("retiro");
+}
+
+/** Un Ingreso con la MISMA categoría+subcategoría que un Gasto de la ventana es
+ * un reembolso (la convención de Daniel), y ya está descontado del lado del
+ * gasto. Contarlo además como ingreso lo cuenta dos veces. */
+function esReembolsoDeGasto(m, ventana) {
+  return movimientos.some(
+    (g) =>
+      g.tipo === "Gasto" &&
+      norm(g.categoria) === norm(m.categoria) &&
+      norm(g.subcategoria) === norm(m.subcategoria) &&
+      ventana.includes(`${g.año}-${String(g.mes).padStart(2, "0")}`)
+  );
+}
+
 /** Cuánto de tus ingresos se va en deuda. Dos cifras: la bruta (la que mira el
- * banco antes de prestarte de nuevo) y la neta, descontando los arriendos que
- * recibes y lo que te devuelven del préstamo — que es la que vive tu bolsillo.
+ * banco antes de prestarte de nuevo) y la neta, descontando lo que te devuelven
+ * — que es la que vive tu bolsillo.
  *
- * Las cuotas salen de los créditos cargados, NO de los movimientos: así no se
- * cuenta dos veces lo que ya está acá arriba. */
+ * Las cuotas salen de los créditos cargados, NO de los movimientos, así no se
+ * cuenta dos veces lo que ya está más arriba en la página. Y del lado del
+ * ingreso NO vale sumar todo lo que diga "Ingreso": hay que sacar reembolsos,
+ * traspasos de ahorro propio y devoluciones de cuotas, o el ingreso se infla y
+ * la carga sale artificialmente baja. */
 function renderCargaFinanciera(cuotasCLP) {
-  const MESES_REF = 3;
-  const REEMBOLSOS = new Set(["Dividendos", "Pago Prestamo"]);
+  const MESES_PROMEDIO = 3;
+  const MESES_VENTANA = 6; // ventana más ancha para reconocer un reembolso de una compra anterior
   const hoy = new Date();
-  const claves = [];
-  for (let k = 1; k <= MESES_REF; k++) {
-    const d = new Date(hoy.getFullYear(), hoy.getMonth() - k, 1);
-    claves.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-  }
+  const mesesDesdeHoy = (n) => {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth() - n, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  };
+  const promedioMeses = Array.from({ length: MESES_PROMEDIO }, (_, k) => mesesDesdeHoy(k + 1));
+  const ventana = Array.from({ length: MESES_VENTANA }, (_, k) => mesesDesdeHoy(k + 1));
+
   const key = (m) => `${m.año}-${String(m.mes).padStart(2, "0")}`;
-  const enMeses = movimientos.filter((m) => claves.includes(key(m)) && m.tipo === "Ingreso");
+  const cubos = { ingreso: 0, devolucion: 0, traspaso: 0, reembolso: 0 };
+  for (const m of movimientos) {
+    if (m.tipo !== "Ingreso" || !promedioMeses.includes(key(m))) continue;
+    const monto = Math.abs(m.monto) / MESES_PROMEDIO;
+    if (CAT_DEVOLUCION_DEUDA.has(norm(m.categoria))) cubos.devolucion += monto;
+    else if (esTraspasoPropio(m)) cubos.traspaso += monto;
+    else if (esReembolsoDeGasto(m, ventana)) cubos.reembolso += monto;
+    else cubos.ingreso += monto;
+  }
 
-  const promedio = (filtro) => enMeses.filter(filtro).reduce((s, m) => s + Math.abs(m.monto), 0) / MESES_REF;
-  const ingreso = promedio((m) => !REEMBOLSOS.has(m.categoria));
-  const devuelven = promedio((m) => REEMBOLSOS.has(m.categoria));
+  const neta = cuotasCLP - cubos.devolucion;
+  const pctBruta = cubos.ingreso ? (cuotasCLP / cubos.ingreso) * 100 : 0;
+  const pctNeta = cubos.ingreso ? (neta / cubos.ingreso) * 100 : 0;
 
-  const neta = cuotasCLP - devuelven;
-  const pctBruta = ingreso ? (cuotasCLP / ingreso) * 100 : 0;
-  const pctNeta = ingreso ? (neta / ingreso) * 100 : 0;
+  const fuera = [
+    [cubos.devolucion, "te devuelven del dividendo y del préstamo (ya se descuentan de las cuotas)"],
+    [cubos.traspaso, "son retiros de tu propio ahorro, no plata nueva"],
+    [cubos.reembolso, "son reembolsos que ya vienen descontados del gasto"],
+  ].filter(([monto]) => monto > 0);
 
   $("cargaBody").innerHTML = `
     <div class="carga-fila">
       <div>
         <div class="stat-label">Lo que el banco ve</div>
         <div class="stat-value hero-num-sm ${pctBruta > 40 ? "expense" : ""}">${pct(pctBruta)}</div>
-        <div class="rank-meta">${fmtCLP(cuotasCLP)} de cuotas sobre ${fmtCLP(ingreso)} de ingreso</div>
+        <div class="rank-meta">${fmtCLP(cuotasCLP)} de cuotas</div>
       </div>
       <div>
         <div class="stat-label">Lo que pagas tú</div>
         <div class="stat-value hero-num-sm income">${pct(pctNeta)}</div>
-        <div class="rank-meta">${fmtCLP(neta)}, descontando ${fmtCLP(devuelven)} que te devuelven</div>
+        <div class="rank-meta">${fmtCLP(neta)}, ya descontado lo que te devuelven</div>
       </div>
     </div>
     ${barra(Math.min(pctBruta, 100), pctBruta > 40 ? "over" : "")}
+    <div class="carga-base">
+      <div>
+        <div class="stat-label">Ingreso propio</div>
+        <div class="dato">${fmtCLP(cubos.ingreso)}<span class="rank-meta"> al mes</span></div>
+      </div>
+      <div class="rank-meta">promedio de tus últimos ${MESES_PROMEDIO} meses cerrados</div>
+    </div>
     <p class="card-sub" style="margin:10px 0 0;">
-      Sobre el promedio de tus últimos ${MESES_REF} meses cerrados. Pasado el 40%, los bancos
-      se ponen difíciles para prestarte de nuevo.
+      Ese ingreso es solo plata que entra de verdad. Quedan fuera
+      ${fuera.map(([monto, texto]) => `<strong>${fmtCLP(monto)}</strong> que ${texto}`).join("; ")}.
+      Pasado el 40%, los bancos se ponen difíciles para prestarte de nuevo.
     </p>`;
 }
 

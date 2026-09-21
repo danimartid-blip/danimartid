@@ -1095,3 +1095,16 @@ nav.tabbar a { font-size: 9px; padding-left: 1px; padding-right: 1px; }
   padding: 2px 7px; border-radius: var(--radius-pill);
   vertical-align: 1px; white-space: nowrap;
 }
+
+/* Base del cálculo de carga financiera, a la vista para poder auditarla. */
+.carga-base {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.carga-base .dato { font-size: 16px; font-weight: 800; letter-spacing: -0.02em; }
