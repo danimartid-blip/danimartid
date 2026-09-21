@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202609211530">
+<link rel="stylesheet" href="css/styles.css?v=202609211812">
 </head>
 <body>
 
@@ -36,7 +36,7 @@
         <div class="hero-box hero-box-deuda hero-box-wide">
           <div class="hero-head"><span class="stat-label">Debes hoy</span></div>
           <div class="stat-value hero-num expense" id="statDeuda">$0</div>
-          <div class="hero-estado" id="statDeudaUF"></div>
+          <div class="hero-estado" id="statDeudaDetalle"></div>
         </div>
         <div class="hero-box hero-box-patrimonio">
           <div class="hero-head"><span class="stat-label">Dividendos del mes</span></div>
@@ -58,6 +58,11 @@
       </p>
       <div class="apertura-bar" id="aperturaBar"></div>
       <div class="apertura-leyenda" id="aperturaLeyenda"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">¿A cuál le abono primero?</div>
+      <div id="rankingBody"></div>
     </div>
 
     <div id="listaCreditos"></div>
@@ -97,10 +102,10 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202609211530"></script>
+<script src="js/config.js?v=202609211812"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202609211530"></script>
-<script src="js/anim.js?v=202609211530"></script>
-<script src="js/deuda.js?v=202609211530"></script>
+<script src="js/sheets-auth.js?v=202609211812"></script>
+<script src="js/anim.js?v=202609211812"></script>
+<script src="js/deuda.js?v=202609211812"></script>
 </body>
 </html>

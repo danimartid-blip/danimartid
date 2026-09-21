@@ -1079,3 +1079,19 @@ select.native, input[type="month"] {
 /* Con 6 pestañas el ancho por ítem queda justo en pantallas de 360px. */
 nav.tabbar { gap: 2px; }
 nav.tabbar a { font-size: 9px; padding-left: 1px; padding-right: 1px; }
+
+/* Ranking de a cuál crédito abonar primero. */
+.rank-nombre { font-size: 13.5px; font-weight: 750; letter-spacing: -0.01em; }
+.rank-mejor {
+  background: color-mix(in srgb, var(--income) 8%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin: 0 -10px;
+}
+.badge-ok {
+  background: color-mix(in srgb, var(--income) 16%, transparent);
+  color: var(--income);
+  font-size: 9.5px; font-weight: 800;
+  padding: 2px 7px; border-radius: var(--radius-pill);
+  vertical-align: 1px; white-space: nowrap;
+}
