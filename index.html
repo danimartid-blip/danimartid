@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202609261821">
+<link rel="stylesheet" href="css/styles.css?v=202609261928">
 </head>
 <body>
 
@@ -74,49 +74,75 @@
 
     <div class="card">
       <div class="card-title">Por categoría vs. presupuesto</div>
-      <div class="category-row">
-        <div class="category-row-top cat-clickable" id="toggleGastoTipo">
-          <span class="cat-name">Gastos</span>
-          <span class="cat-amounts expense" id="totalGastoMes"></span>
-        </div>
+      <div class="macro" id="macroGasto">
+        <button type="button" class="macro-head macro-gasto" id="toggleGastoTipo" aria-expanded="false" aria-controls="categoryList">
+          <span class="macro-line">
+            <span class="macro-label">Gastos</span>
+            <span class="macro-chip" id="chipGastoMes"></span>
+            <span class="macro-chev" aria-hidden="true"></span>
+          </span>
+          <span class="macro-num expense" id="totalGastoMes">$0</span>
+          <span class="bar-track"><span class="bar-fill" id="barGastoMes" data-w="0" style="width:0%"></span></span>
+          <span class="macro-foot" id="footGastoMes"></span>
+        </button>
         <div class="cat-detail" id="categoryList" hidden></div>
       </div>
-      <div class="category-row">
-        <div class="category-row-top cat-clickable" id="toggleIngresoTipo">
-          <span class="cat-name">Ingresos</span>
-          <span class="cat-amounts income" id="totalIngresoMes"></span>
-        </div>
+      <div class="macro" id="macroIngreso">
+        <button type="button" class="macro-head macro-ingreso" id="toggleIngresoTipo" aria-expanded="false" aria-controls="categoryListIngreso">
+          <span class="macro-line">
+            <span class="macro-label">Ingresos</span>
+            <span class="macro-chip" id="chipIngresoMes"></span>
+            <span class="macro-chev" aria-hidden="true"></span>
+          </span>
+          <span class="macro-num income" id="totalIngresoMes">$0</span>
+          <span class="bar-track"><span class="bar-fill" id="barIngresoMes" data-w="0" style="width:0%"></span></span>
+          <span class="macro-foot" id="footIngresoMes"></span>
+        </button>
         <div class="cat-detail" id="categoryListIngreso" hidden></div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-title">Fuera de presupuesto</div>
-      <div class="category-row">
-        <div class="category-row-top cat-clickable" id="toggleFueraPpto">
-          <span class="cat-name">Gastado de más este mes</span>
-          <span class="cat-amounts" id="statFueraPpto"></span>
-        </div>
+      <div class="macro" id="macroFuera">
+        <button type="button" class="macro-head macro-fuera" id="toggleFueraPpto" aria-expanded="false" aria-controls="fueraPptoDetalle">
+          <span class="macro-line">
+            <span class="macro-label">Gastado de más este mes</span>
+            <span class="macro-chip" id="chipFueraPpto"></span>
+            <span class="macro-chev" aria-hidden="true"></span>
+          </span>
+          <span class="macro-num" id="statFueraPpto"></span>
+          <span class="macro-foot" id="footFueraPpto"></span>
+        </button>
         <div class="cat-detail" id="fueraPptoDetalle" hidden></div>
       </div>
     </div>
 
-    <div class="card">
-      <div class="category-row">
-        <div class="category-row-top cat-clickable" id="togglePorPagar">
-          <span class="cat-name">Por pagar</span>
-          <span class="cat-amounts" style="color:var(--serious)" id="statPorPagar">$0</span>
-        </div>
+    <div class="card" id="creditoCard">
+      <div class="card-title">Crédito</div>
+      <div class="credito-grid">
+        <button type="button" class="macro-mini macro-mini-pagar" id="togglePorPagar" aria-expanded="false" aria-controls="porPagarPeriodos">
+          <span class="macro-mini-line">
+            <span class="macro-mini-label">Debes</span>
+            <span class="macro-chev" aria-hidden="true"></span>
+          </span>
+          <span class="macro-mini-num" id="statPorPagar">$0</span>
+          <span class="macro-mini-foot" id="footPorPagar"></span>
+        </button>
+        <button type="button" class="macro-mini macro-mini-cobrar" id="togglePorCobrar" aria-expanded="false" aria-controls="porCobrarPersonas">
+          <span class="macro-mini-line">
+            <span class="macro-mini-label">Te deben</span>
+            <span class="macro-chev" aria-hidden="true"></span>
+          </span>
+          <span class="macro-mini-num" id="statPorCobrar">$0</span>
+          <span class="macro-mini-foot" id="footPorCobrar"></span>
+        </button>
+      </div>
+      <div class="credito-neto" id="creditoNeto"></div>
+      <div class="macro">
         <div class="cat-detail" id="porPagarPeriodos" hidden></div>
       </div>
-    </div>
-
-    <div class="card">
-      <div class="category-row">
-        <div class="category-row-top cat-clickable" id="togglePorCobrar">
-          <span class="cat-name">Por cobrar</span>
-          <span class="cat-amounts income" id="statPorCobrar">$0</span>
-        </div>
+      <div class="macro">
         <div class="cat-detail" id="porCobrarPersonas" hidden></div>
       </div>
     </div>
@@ -152,10 +178,10 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202609261821"></script>
+<script src="js/config.js?v=202609261928"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202609261821"></script>
-<script src="js/anim.js?v=202609261821"></script>
-<script src="js/dashboard.js?v=202609261821"></script>
+<script src="js/sheets-auth.js?v=202609261928"></script>
+<script src="js/anim.js?v=202609261928"></script>
+<script src="js/dashboard.js?v=202609261928"></script>
 </body>
 </html>

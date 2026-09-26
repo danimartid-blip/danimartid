@@ -1129,3 +1129,176 @@ nav.tabbar a { font-size: 9px; padding-left: 1px; padding-right: 1px; }
 .hero-box-mundo { --box-tint: var(--text-muted); }
 .hero-box-hipotecario { --box-tint: var(--series-1); }
 .hero-box-consumo { --box-tint: var(--expense); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PORTADA DE LAS TARJETAS DEL DASHBOARD (.macro)
+   Lo que se ve ANTES de desplegar. Antes era una línea de texto con un
+   número al lado y no contaba nada: había que abrir para saber si el mes
+   iba bien o mal. Ahora el encabezado solo ya responde "¿voy bien?" —
+   monto, porcentaje, barra y cuánto queda. El detalle de adentro no cambia.
+   ═══════════════════════════════════════════════════════════════════════ */
+.macro {
+  --cat-color: #9575cd; /* lo hereda .cat-detail para teñir su fondo */
+}
+.macro + .macro { margin-top: 10px; }
+
+.macro-head {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 13px 14px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: background .16s var(--ease), border-color .16s var(--ease), transform .14s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.macro-head:active { transform: scale(0.992); }
+.macro-head[aria-expanded="true"] {
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+
+.macro-line { display: flex; align-items: center; gap: 8px; }
+.macro-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-secondary);
+  flex: 1;
+  min-width: 0;
+}
+.macro-num {
+  font-size: 26px;
+  font-weight: 760;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+.macro-foot {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.macro-foot strong { color: var(--text-secondary); font-weight: 650; }
+/* La barra va en <span> (el encabezado es un <button> y un <div> adentro no es
+   contenido válido), así que hay que blockificarla a mano: `height` no aplica a
+   un elemento inline y la barra quedaría invisible. Y el [hidden] necesita su
+   propia regla, porque este selector le gana en especificidad al del navegador
+   — sin eso, un mes sin presupuesto mostraba igual una barra vacía. */
+.macro-head .bar-track { display: block; margin-top: 1px; }
+.macro-head .bar-fill { display: block; }
+.macro-head .bar-track[hidden] { display: none; }
+
+/* el porcentaje del mes, en una pastilla que cambia de color según cómo va */
+.macro-chip {
+  font-size: 11px;
+  font-weight: 750;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  background: var(--surface-3);
+  color: var(--text-secondary);
+}
+.macro-chip:empty { display: none; }
+.macro-chip-ok { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good); }
+.macro-chip-warn { background: color-mix(in srgb, var(--warning) 20%, transparent); color: #8a6100; }
+.macro-chip-over { background: color-mix(in srgb, var(--critical) 14%, transparent); color: var(--critical); }
+
+/* chevron propio: no se puede reusar el de .cat-name::after porque acá el
+   encabezado es un <button> con varias líneas, no un texto suelto */
+.macro-chev {
+  width: 0; height: 0;
+  border-left: 4.5px solid transparent;
+  border-right: 4.5px solid transparent;
+  border-top: 5.5px solid var(--text-muted);
+  transition: transform .22s var(--ease);
+  flex: none;
+}
+[aria-expanded="true"] .macro-chev { transform: rotate(180deg); }
+
+/* "Fuera de presupuesto": sin barra, el número manda. Cuando vas dentro del
+   presupuesto el bloque se pone verde y calmo en vez de mostrar un $0 frío. */
+.macro-fuera .macro-num { color: var(--critical); }
+.macro-fuera.macro-ok { background: color-mix(in srgb, var(--good) 8%, var(--surface-2)); }
+.macro-fuera.macro-ok .macro-num { font-size: 15px; font-weight: 650; color: var(--good); }
+
+/* ── Crédito: los dos mundos lado a lado ── */
+.credito-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.macro-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  padding: 12px 13px;
+  cursor: pointer;
+  font: inherit;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  transition: background .16s var(--ease), border-color .16s var(--ease), transform .14s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+  min-width: 0;
+}
+.macro-mini:active { transform: scale(0.985); }
+.macro-mini[aria-expanded="true"] { border-color: var(--border-strong); }
+.macro-mini-line { display: flex; align-items: center; gap: 6px; }
+.macro-mini-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-secondary);
+  flex: 1;
+  min-width: 0;
+}
+.macro-mini-num {
+  font-size: 20px;
+  font-weight: 760;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+.macro-mini-foot { font-size: 10.5px; color: var(--text-muted); }
+.macro-mini-pagar { background: color-mix(in srgb, var(--serious) 9%, var(--surface-2)); }
+.macro-mini-pagar .macro-mini-num { color: var(--serious); }
+.macro-mini-cobrar { background: color-mix(in srgb, var(--income) 8%, var(--surface-2)); }
+.macro-mini-cobrar .macro-mini-num { color: var(--income); }
+
+.credito-neto {
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid var(--grid);
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.credito-neto strong { color: var(--text); font-weight: 700; }
+.credito-neto:empty { display: none; }
+
+/* pantallas muy angostas: los dos mundos se apilan antes de que el número
+   se corte (un "$1.204.099" no entra en media pantalla de 320px) */
+@media (max-width: 360px) {
+  .credito-grid { grid-template-columns: 1fr; }
+  .macro-num { font-size: 23px; }
+}
+
+/* En oscuro, el amarillo del chip "vas justo" no se lee sobre fondo oscuro. */
+:root[data-theme="dark"] .macro-chip-warn { color: var(--warning); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .macro-chip-warn { color: var(--warning); }
+}
+
+/* "no se proyecta": ni alarma ni buena noticia — solo no hay nada que decir. */
+.macro-fuera.macro-neutral .macro-num {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text-secondary);
+}

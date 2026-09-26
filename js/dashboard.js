@@ -572,6 +572,57 @@ function wireSubcategoryToggles(scope) {
  * aunque todavía no haya nada cargado este mes puntual — así "Diezmo" o
  * "Sueldo" no desaparecen solo porque recién no se cargó. Un presupuesto en $0
  * sí se omite (no aporta nada mostrarlo). */
+/** La portada de Gastos/Ingresos: el encabezado plegado tiene que contestar
+ * "¿voy bien este mes?" sin abrir nada. Monto grande, pastilla con el % del
+ * presupuesto consumido, barra, y abajo cuánto queda (o cuánto te pasaste).
+ * En Ingresos "pasarse" es bueno, así que el color del chip se invierte. */
+function pintarPortadaTipo(tipo, totalReal, totalMeta) {
+  const suf = tipo === "Gasto" ? "GastoMes" : "IngresoMes";
+  const num = $(`total${suf}`);
+  const chip = $(`chip${suf}`);
+  const bar = $(`bar${suf}`);
+  const foot = $(`foot${suf}`);
+  if (!num) return;
+
+  Anim.numero(num, totalReal, fmtCLP);
+
+  const hayMeta = totalMeta > 0;
+  const pct = hayMeta ? Math.round((totalReal / totalMeta) * 100) : 0;
+  chip.textContent = hayMeta ? `${pct}%` : "";
+  // En Gasto, pasarse es malo; en Ingreso, quedarse corto es lo malo. Por eso
+  // los umbrales están al revés y no alcanza con un solo "> 100 = rojo".
+  // El rojo se reserva para el Gasto: en Ingreso, quedarse corto a mitad de mes
+  // es lo NORMAL (el sueldo todavía no entró), y pintarlo de rojo hacía que un
+  // mes recién empezado se viera como si algo estuviera mal.
+  const estado = !hayMeta
+    ? null
+    : tipo === "Gasto"
+      ? pct > 100 ? "over" : pct > 85 ? "warn" : "ok"
+      : pct >= 100 ? "ok" : "warn";
+  chip.className = "macro-chip" + (estado ? ` macro-chip-${estado}` : "");
+
+  bar.classList.toggle("over", hayMeta && tipo === "Gasto" && pct > 100);
+  bar.dataset.w = hayMeta ? Math.min(pct, 100) : 0;
+  bar.style.width = "0%";
+  bar.parentElement.hidden = !hayMeta;
+
+  if (!hayMeta) {
+    foot.textContent = "Sin presupuesto para este mes";
+  } else {
+    const dif = totalMeta - totalReal;
+    const cola =
+      tipo === "Gasto"
+        ? dif >= 0
+          ? `quedan <strong>${fmtCLP(dif)}</strong>`
+          : `te pasaste <strong>${fmtCLP(-dif)}</strong>`
+        : dif > 0
+          ? `faltan entrar <strong>${fmtCLP(dif)}</strong>`
+          : `entró <strong>${fmtCLP(-dif)}</strong> de más`;
+    foot.innerHTML = `de ${fmtCLP(totalMeta)} · ${cola}`;
+  }
+  Anim.barras($(`macro${tipo === "Gasto" ? "Gasto" : "Ingreso"}`));
+}
+
 function buildCategoryList(tipo, selectedKey, inMonth) {
   const containerId = tipo === "Gasto" ? "categoryList" : "categoryListIngreso";
   const totalId = tipo === "Gasto" ? "totalGastoMes" : "totalIngresoMes";
@@ -595,7 +646,7 @@ function buildCategoryList(tipo, selectedKey, inMonth) {
 
   const totalReal = sorted.reduce((s, [, monto]) => s + monto, 0);
   const totalMeta = totalBudgetForTipo(tipo, selectedKey);
-  $(totalId).innerHTML = `${fmtCLP(totalReal)} <span class="meta">${totalMeta > 0 ? `de ${fmtCLP(totalMeta)}` : "sin ppto."}</span>`;
+  pintarPortadaTipo(tipo, totalReal, totalMeta);
 
   const list = $(containerId);
   list.innerHTML = "";
@@ -832,17 +883,36 @@ function faltaDelPresupuesto(tipo, mes) {
 function renderFueraPresupuesto(gasto, proyecta, nombreMes) {
   const total = $("statFueraPpto");
   const detalle = $("fueraPptoDetalle");
+  const cabeza = $("toggleFueraPpto");
+  const chip = $("chipFueraPpto");
+  const pie = $("footFueraPpto");
+  const sinPpto = gasto.excesos.filter((e) => e.meta <= 0);
+
   if (!proyecta || gasto.excedido <= 0) {
-    total.className = "cat-amounts";
-    total.innerHTML = `<span class="meta">${proyecta ? "vas dentro del presupuesto" : `${nombreMes} no se proyecta`}</span>`;
+    // Ir dentro del presupuesto es una buena noticia: el bloque se pinta en
+    // verde y lo dice, en vez de mostrar un $0 frío que se lee como error.
+    // Verde solo cuando de verdad es buena noticia. Un mes pasado no se
+    // proyecta: eso no es "vas bien", es "acá no hay nada que proyectar".
+    cabeza.classList.toggle("macro-ok", proyecta);
+    cabeza.classList.toggle("macro-neutral", !proyecta);
+    total.className = "macro-num";
+    total.textContent = proyecta ? "Vas dentro del presupuesto" : `${nombreMes} no se proyecta`;
+    chip.textContent = "";
+    chip.className = "macro-chip";
+    pie.textContent = proyecta ? "Ninguna categoría se pasó este mes" : "Los meses cerrados se muestran tal cual";
     detalle.innerHTML = '<div class="skeleton no-spinner" style="padding:8px 0;">Nada fuera de presupuesto este mes</div>';
     return;
   }
 
-  total.className = "cat-amounts expense";
-  total.innerHTML = fmtCLP(gasto.excedido);
+  cabeza.classList.remove("macro-ok", "macro-neutral");
+  total.className = "macro-num";
+  Anim.numero(total, gasto.excedido, fmtCLP);
+  chip.className = "macro-chip macro-chip-over";
+  chip.textContent = `${gasto.excesos.length} categoría${gasto.excesos.length === 1 ? "" : "s"}`;
+  pie.innerHTML = sinPpto.length
+    ? `<strong>${sinPpto.length}</strong> sin presupuesto · esta plata ya salió`
+    : "Esta plata ya salió y no vuelve a la proyección";
 
-  const sinPpto = gasto.excesos.filter((e) => e.meta <= 0);
   const resumen =
     `${gasto.excesos.length} categoría${gasto.excesos.length === 1 ? "" : "s"} por sobre lo presupuestado` +
     (sinPpto.length ? `, ${sinPpto.length} de ellas sin presupuesto` : "");
@@ -974,6 +1044,30 @@ function renderIndicadores(selectedKey, d) {
     (proyecta ? "Después, el mismo cambio por presupuesto que la liquidez." : fraseMes);
 }
 
+/** Lo que se debe, guardado entre renderPorPagar y renderPorCobrar para poder
+ * escribir el neto de la ficha Crédito (las dos mitades se pintan por separado,
+ * pero el neto necesita las dos). */
+let creditoDebes = 0;
+
+/** La línea de cierre de la ficha Crédito: el saldo entre las dos columnas.
+ * Es el dato que antes no estaba en ninguna parte — había que restar a ojo dos
+ * tarjetas separadas para saber en qué quedás. */
+function pintarNetoCredito(debes, teDeben) {
+  const el = $("creditoNeto");
+  if (!el) return;
+  if (debes === 0 && teDeben === 0) {
+    el.textContent = "";
+    return;
+  }
+  const neto = debes - teDeben;
+  el.innerHTML =
+    neto > 0
+      ? `Neto: debes <strong>${fmtCLP(neto)}</strong>`
+      : neto < 0
+        ? `Neto: te deben <strong>${fmtCLP(-neto)}</strong>`
+        : `Neto: <strong>estás a mano</strong>`;
+}
+
 /** "10-10-2026" -> "10 Oct 2026" (y "sin fecha" si no tiene). */
 function fechaVencLegible(venc, d) {
   if (!d) return "Sin fecha de vencimiento";
@@ -984,7 +1078,9 @@ function fechaVencLegible(venc, d) {
  * dentro de cada fecha por medio de pago — que es como llega el estado de
  * cuenta. Lo que te deben ya no se mezcla acá: vive en su propia ficha. */
 function renderPorPagar(deuda) {
-  Anim.numero($("statPorPagar"), sumaPagar(deuda), fmtCLP);
+  const total = sumaPagar(deuda);
+  Anim.numero($("statPorPagar"), total, fmtCLP);
+  creditoDebes = total;
 
   const porFecha = {};
   for (const m of deuda) {
@@ -996,6 +1092,14 @@ function renderPorPagar(deuda) {
     if (!b.d) return -1;
     return a.d - b.d;
   });
+
+  // El pie de la portada dice cuántos estados de cuenta hay detrás del número:
+  // "$1.204.099" no es lo mismo si es un vencimiento que si son cuatro.
+  const proximo = fechas.find((f) => f.d);
+  $("footPorPagar").textContent = fechas.length
+    ? `${fechas.length} vencimiento${fechas.length === 1 ? "" : "s"}` +
+      (proximo ? ` · próximo ${proximo.d.getDate()} ${MESES[proximo.d.getMonth() + 1]}` : "")
+    : "Nada pendiente";
 
   const cont = $("porPagarPeriodos");
   cont.innerHTML = "";
@@ -1040,9 +1144,15 @@ function renderPorPagar(deuda) {
  * Esteban y Ric te debían por la misma tarjeta y el mismo vencimiento, se veía
  * un solo número y el abono de uno bajaba la deuda de los otros. */
 function renderPorCobrar(hilos) {
-  Anim.numero($("statPorCobrar"), sumaCobrarHilos(hilos), fmtCLP);
+  const total = sumaCobrarHilos(hilos);
+  Anim.numero($("statPorCobrar"), total, fmtCLP);
 
   const abiertos = hilos.filter((h) => netoHilo(h) > 0).sort((a, b) => netoHilo(b) - netoHilo(a));
+  $("footPorCobrar").textContent = abiertos.length
+    ? `${abiertos.length} persona${abiertos.length === 1 ? "" : "s"}`
+    : "Nadie te debe";
+  pintarNetoCredito(creditoDebes, total);
+
   const cont = $("porCobrarPersonas");
   cont.innerHTML = "";
   if (abiertos.length === 0) {
@@ -1958,19 +2068,19 @@ async function init() {
 
   // Gastos/Ingresos: el toggle de arriba es fijo (vive en el HTML, no se
   // reconstruye con cada mes), así que se cablea una sola vez acá.
-  $("toggleGastoTipo").addEventListener("click", () => {
-    $("categoryList").hidden = !$("categoryList").hidden;
-  });
-  $("toggleIngresoTipo").addEventListener("click", () => {
-    $("categoryListIngreso").hidden = !$("categoryListIngreso").hidden;
-  });
+  // Las portadas son <button> con aria-expanded: de ahí sale la rotación del
+  // chevron y el cambio de fondo cuando está abierto (puro CSS, sin clases).
   for (const [btn, panel] of [
+    ["toggleGastoTipo", "categoryList"],
+    ["toggleIngresoTipo", "categoryListIngreso"],
     ["toggleFueraPpto", "fueraPptoDetalle"],
     ["togglePorPagar", "porPagarPeriodos"],
     ["togglePorCobrar", "porCobrarPersonas"],
   ]) {
     $(btn).addEventListener("click", () => {
-      $(panel).hidden = !$(panel).hidden;
+      const abierto = $(panel).hidden;
+      $(panel).hidden = !abierto;
+      $(btn).setAttribute("aria-expanded", String(abierto));
     });
   }
 
