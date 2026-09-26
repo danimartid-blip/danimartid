@@ -1403,7 +1403,8 @@ function wireEditoresMov(panel, movs) {
         <input type="number" inputmode="numeric" class="edit-monto" value="${Math.round(Math.abs(m.monto))}">
         <label>Detalle</label>
         <input type="text" class="edit-detalle" value="${escapeAttr(m.detalle || "")}">
-        <button class="btn-primary edit-guardar" style="margin-top:12px;">Guardar cambios</button>`;
+        <button class="btn-primary edit-guardar" style="margin-top:12px;">Guardar cambios</button>
+        <button type="button" class="btn-danger edit-borrar">Borrar este movimiento</button>`;
 
       caja.querySelector(".edit-guardar").addEventListener("click", async (ev) => {
         ev.stopPropagation();
@@ -1448,6 +1449,41 @@ function wireEditoresMov(panel, movs) {
           // la pantalla no puede quedar congelada en "Guardando…".
           btn.disabled = false;
           if (btn.textContent === "Guardando…") btn.textContent = "Guardar cambios";
+        }
+      });
+
+      // Borrar es para lo que no existió nunca: un duplicado, un cargo que el
+      // banco reversó. Para una compra que sí ocurrió y ya se pagó, lo que
+      // corresponde es marcarla pagada, no borrarla.
+      caja.querySelector(".edit-borrar").addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        const btn = ev.currentTarget;
+        const que = [
+          `${m.categoria}${m.subcategoria ? ` / ${m.subcategoria}` : ""}`,
+          fmtCLP(Math.abs(m.monto)),
+          m.detalle ? `"${m.detalle}"` : null,
+          m.fecha,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        if (!confirm(`Se va a BORRAR este movimiento de la planilla:\n\n${que}\n\nNo se puede deshacer. ¿Continuar?`))
+          return;
+
+        btn.disabled = true;
+        btn.textContent = "Borrando…";
+        try {
+          await window.SheetsApi.deleteRow("Movimientos", m.fila, { I: m.monto, J: m.detalle || "" });
+          // Ya está borrado en la planilla: si el refresco falla, el aviso no
+          // puede decir "no se pudo borrar".
+          showToast("Movimiento borrado");
+          btn.textContent = "Borrado ✓";
+          await refrescarVista();
+        } catch (err) {
+          console.error(err);
+          showToast(err?.message || "No se pudo borrar", true);
+        } finally {
+          btn.disabled = false;
+          if (btn.textContent === "Borrando…") btn.textContent = "Borrar este movimiento";
         }
       });
     });

@@ -665,6 +665,21 @@ input[type="number"] { font-variant-numeric: tabular-nums; }
 .btn-secondary:active { background: var(--surface-2); transform: scale(0.97); }
 .btn-secondary.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
+/* Borrar. Deliberadamente NO va relleno como el primario: es una salida de
+   emergencia (duplicados, cargos reversados), no la acción que se busca. */
+.btn-danger {
+  width: 100%; padding: 11px; margin-top: 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--critical) 40%, transparent);
+  background: color-mix(in srgb, var(--critical) 7%, transparent);
+  color: var(--critical);
+  font-size: 13.5px; font-weight: 700; cursor: pointer;
+  transition: background .16s var(--ease), transform .14s var(--ease), opacity .18s;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-danger:active { background: color-mix(in srgb, var(--critical) 14%, transparent); transform: scale(0.985); }
+.btn-danger:disabled { opacity: .55; }
+
 .btn-link {
   background: none; border: none; color: var(--accent);
   font-size: 13.5px; font-weight: 700; padding: 10px 0 2px; cursor: pointer;

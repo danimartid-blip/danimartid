@@ -189,6 +189,58 @@ async function updateRange(range, values, mode = "USER_ENTERED") {
   );
 }
 
+/** sheetId (numérico) de cada pestaña, que `:batchUpdate` necesita y que no es
+ * lo mismo que el nombre. Se pide una vez y queda cacheado. */
+let sheetIdsCache = null;
+async function sheetIdPorNombre(nombre) {
+  if (!sheetIdsCache) {
+    const data = await sheetsFetch("?fields=sheets.properties(sheetId,title)");
+    sheetIdsCache = {};
+    for (const s of data.sheets || []) sheetIdsCache[s.properties.title] = s.properties.sheetId;
+  }
+  const id = sheetIdsCache[nombre];
+  if (id === undefined) throw new Error(`No existe la pestaña "${nombre}"`);
+  return id;
+}
+
+const mismoValor = (a, b) => {
+  const na = Number(a);
+  const nb = Number(b);
+  if (Number.isFinite(na) && Number.isFinite(nb)) return na === nb;
+  return String(a ?? "").trim() === String(b ?? "").trim();
+};
+
+/** Borra UNA fila de una pestaña. Borrar corre todas las filas de abajo, así
+ * que el número de fila que tenía la vista deja de servir: por eso `esperado`
+ * ({ "I": monto, "J": detalle }, por letra de columna) se re-lee de la planilla
+ * y se compara ANTES de borrar. Si no calza, no borra nada y avisa — es la
+ * diferencia entre borrar lo que el usuario vio y borrar lo que quedó en ese
+ * lugar. Quien llame tiene que recargar los datos después (las filas se
+ * corrieron). Lee con UNFORMATTED_VALUE para que un monto no llegue con
+ * separador de miles y falle la comparación por formato. */
+async function deleteRow(tab, fila, esperado = null) {
+  if (esperado) {
+    const actual = (await readRangeRaw(`${tab}!A${fila}:N${fila}`))[0] || [];
+    for (const [col, valor] of Object.entries(esperado)) {
+      const i = col.toUpperCase().charCodeAt(0) - 65;
+      if (!mismoValor(actual[i], valor)) {
+        throw new Error(
+          "Esa fila ya no es la misma en la planilla (alguien la movió o la editó). No se borró nada — recarga y vuelve a intentar."
+        );
+      }
+    }
+  }
+  const sheetId = await sheetIdPorNombre(tab);
+  return sheetsFetch(":batchUpdate", {
+    method: "POST",
+    body: JSON.stringify({
+      requests: [
+        { deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: fila - 1, endIndex: fila } } },
+      ],
+    }),
+  });
+}
+
 /** Call at the top of a page's init(). Redirects to the login splash if not
  * authenticated, and returns false so the caller can bail out early. */
 function requireAuthOrRedirect() {
@@ -199,4 +251,4 @@ function requireAuthOrRedirect() {
 }
 
 window.SheetsAuth = { getAccessToken, isLoggedIn, logout, requireAuthOrRedirect };
-window.SheetsApi = { readRange, readRangeRaw, appendRow, appendRows, updateRange, batchUpdateValues };
+window.SheetsApi = { readRange, readRangeRaw, appendRow, appendRows, updateRange, batchUpdateValues, deleteRow };
