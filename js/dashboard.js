@@ -215,9 +215,20 @@ function esMovReembolso(m, anchorMes) {
  * else the same 3-month-average proposal shown on the Presupuesto page. */
 function budgetForSubcategoria(mes, categoria, subcategoria, tipo = "Gasto") {
   if (tipo === "Ingreso" && esReembolsoDeGasto(categoria, subcategoria, [...monthsBeforeExclusive(mes, 3), mes])) return 0;
-  const row = presupuestoRows.find(
-    (p) => p.mes === mes && p.tipo === tipo && p.categoria === categoria && p.subcategoria === subcategoria
+  // Comparación normalizada aunque canonizar() ya haya pasado: es la misma
+  // regla que usa presupuesto.js (findExplicit), y que acá fuera exacta hacía
+  // que las dos páginas leyeran distinto el MISMO dato.
+  // Si hay más de una fila para la misma línea (duplicado en la planilla), gana
+  // la que tiene monto: un 0 casi siempre es un placeholder, y quedarse con él
+  // apagaba el presupuesto de esa línea sin avisar — pasó con Entel Hogar.
+  const filas = presupuestoRows.filter(
+    (p) =>
+      p.mes === mes &&
+      p.tipo === tipo &&
+      normSub(p.categoria) === normSub(categoria) &&
+      normSub(p.subcategoria) === normSub(subcategoria)
   );
+  const row = filas.find((p) => p.monto !== 0) || filas[0];
   return row ? row.monto : avg3Real(tipo, categoria, subcategoria, mes);
 }
 
@@ -1922,6 +1933,10 @@ async function loadData() {
   cuentas = cuentasRows
     .filter((r) => r[0])
     .map(([nombre, saldo]) => ({ nombre, saldo: Number(saldo) || 0 }));
+
+  // Unifica etiquetas que solo difieren en mayúsculas/espacios ANTES de que
+  // cualquier cálculo las compare exacto (ver window.Etiquetas en config.js).
+  window.Etiquetas.canonizar(movimientos, presupuestoRows);
 
   const { hilos } = separarPendientes(movimientos.filter((m) => m.estado === "Por pagar"));
   filasDeHilo = new Set(hilos.flatMap((h) => h.movs.filter((m) => m.tipo !== "Ingreso").map((m) => m.fila)));

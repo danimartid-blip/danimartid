@@ -31,6 +31,7 @@ function fillDatalist(id, values) {
 }
 
 let categoriaSubMap = {};
+let canon = null; // ortografía canónica de categorías/subcategorías/medios ya usados
 let diaVencPorMedio = {}; // "Limited" -> 10 (día del mes en que suele vencer)
 let historialPorMedio = {}; // "Limited" -> [{fecha, estado, monto, detalle}, ...]
 
@@ -184,6 +185,14 @@ async function loadOptions() {
     for (const [medio, dias] of Object.entries(diasPorMedio)) {
       diaVencPorMedio[medio] = Number(Object.entries(dias).sort((a, b) => b[1] - a[1])[0][0]);
     }
+    // Ortografía canónica de lo que YA existe, para pegarle lo que se tipee
+    // ahora. Sin esto, escribir "entel hogar" en vez de "Entel Hogar" crea una
+    // categoría paralela que duplica la línea en el Dashboard y puede apagar su
+    // presupuesto (ver window.Etiquetas en config.js).
+    canon = window.Etiquetas.canonizar(
+      rows.filter((r) => r[4]).map((r) => ({ categoria: r[4], subcategoria: r[5] || "", medioPago: r[6] || "" }))
+    );
+
     fillDatalist("categoriaList", categorias);
     fillDatalist("medioPagoList", medios);
   } catch (err) {
@@ -330,7 +339,11 @@ function fmtCLP(n) {
 }
 
 function updateSubcategorias() {
-  const cat = $("categoria").value.trim();
+  // Por la ortografía canónica, no por la tipeada: si escribe "seguros" en vez
+  // de "Seguros", la lista de subcategorías igual tiene que aparecer (antes
+  // quedaba vacía y empujaba a inventar una subcategoría nueva).
+  const tipeada = $("categoria").value.trim();
+  const cat = canon ? canon.cat(tipeada) : tipeada;
   const subs = categoriaSubMap[cat] ? [...categoriaSubMap[cat]] : [];
   fillDatalist("subcategoriaList", subs);
 }
@@ -416,6 +429,17 @@ function validarFormulario() {
     $("fechaVencimiento").focus();
     return false;
   }
+  // Un Ingreso "Por cobrar" arranca un HILO DE COBRO: la app va a asumir que
+  // alguien te debe esa plata y va a arrastrar a ese hilo los gastos que calcen
+  // por categoría+subcategoría+medio+vencimiento, sacándolos de "Por pagar".
+  // Si en realidad era una devolución del banco (nota de crédito), lo que
+  // corresponde es editar la compra original para que quede por su valor neto.
+  // Esto pasó de verdad y se llevó $105.572 fuera del "Por pagar" de la tarjeta.
+  if (state.tipo === "Ingreso" && state.estado === "Por pagar") {
+    const quien = $("detalle").value.trim() || "(sin detalle)";
+    if (!confirm(`Lo vas a guardar como "Por cobrar": alguien te debe esta plata.\n\n${quien}\n\n¿Es así? Si es una devolución o nota de crédito de una compra tuya, cancela y edita la compra original en vez de cargarla acá.`))
+      return false;
+  }
   // Si abrió la sección de cuotas, que la complete.
   if (!$("cuotaSection").hidden) {
     for (const [id, nombre] of [["cuotasTotales", "el total de cuotas"], ["cuotaDevengada", "la cuota actual"]]) {
@@ -440,10 +464,14 @@ async function handleSubmit(e) {
   try {
     const fecha = $("fecha").value; // YYYY-MM-DD
     const [yyyy, mm] = fecha.split("-");
-    const medioPago = $("medioPago").value.trim();
+    const medioPago = canon ? canon.medio($("medioPago").value.trim()) : $("medioPago").value.trim();
     const montoIngresado = Number($("monto").value) || 0;
-    const categoria = $("categoria").value.trim();
-    const subcategoria = $("subcategoria").value.trim();
+    // Se guarda con la ortografía que ya existe en la planilla, no con la que
+    // se acabó de tipear: "entel hogar" queda como "Entel Hogar".
+    const categoria = canon ? canon.cat($("categoria").value.trim()) : $("categoria").value.trim();
+    const subcategoria = canon
+      ? canon.sub(categoria, $("subcategoria").value.trim())
+      : $("subcategoria").value.trim();
     let detalle = $("detalle").value.trim();
     const vencIso = $("fechaVencimiento").value; // "" si no aplica
     const cuotaActual = Number($("cuotaDevengada").value) || 0;

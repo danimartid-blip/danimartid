@@ -457,6 +457,11 @@ async function loadData() {
       detalle: r[9] || "",
     }))
     .filter((m) => m.fecha && m.categoria);
+
+  // Unifica etiquetas que solo difieren en mayúsculas/espacios: si no, la misma
+  // subcategoría escrita de dos formas se cuenta como dos rituales distintos y
+  // el margen de ahorro sale repartido en dos filas (ver config.js).
+  window.Etiquetas.canonizar(movimientos);
 }
 
 async function init() {

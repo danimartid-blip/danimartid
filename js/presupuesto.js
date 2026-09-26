@@ -129,9 +129,16 @@ function realMonthlyTotal(tipo, categoria, subcategoria, monthKey, anchorMonth =
 }
 
 function findExplicit(mes, tipo, categoria, subcategoria) {
-  return presRows.find(
-    (r) => r.mes === mes && r.tipo === tipo && r.categoria === categoria && normSub(r.subcategoria) === normSub(subcategoria)
+  // Misma regla que dashboard.js: normalizado, y si hay duplicado gana la fila
+  // con monto (un 0 duplicado apagaba el presupuesto de la línea).
+  const filas = presRows.filter(
+    (r) =>
+      r.mes === mes &&
+      r.tipo === tipo &&
+      normSub(r.categoria) === normSub(categoria) &&
+      normSub(r.subcategoria) === normSub(subcategoria)
   );
+  return filas.find((r) => r.monto !== 0) || filas[0];
 }
 
 /** Un Ingreso con la MISMA categoría+subcategoría que algún Gasto EN LOS MESES
@@ -666,6 +673,10 @@ async function loadData() {
       monto: Number(r[8]) || 0,
       detalle: r[9] || "",
     }));
+
+  // Unifica etiquetas que solo difieren en mayúsculas/espacios ANTES de que
+  // cualquier cálculo las compare exacto (ver window.Etiquetas en config.js).
+  window.Etiquetas.canonizar(movimientos, presRows);
 
   categoriaSubMap = {};
   for (const m of movimientos) {
