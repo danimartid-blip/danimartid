@@ -245,7 +245,7 @@ async function deleteRow(tab, fila, esperado = null) {
  * authenticated, and returns false so the caller can bail out early. */
 function requireAuthOrRedirect() {
   if (isLoggedIn()) return true;
-  const here = location.pathname.split("/").pop() || "registro.html";
+  const here = location.pathname.split("/").pop() || "index.html";
   location.replace(`login.html?next=${encodeURIComponent(here)}`);
   return false;
 }

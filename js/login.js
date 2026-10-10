@@ -2,7 +2,7 @@ const $ = (id) => document.getElementById(id);
 
 function nextPage() {
   const params = new URLSearchParams(location.search);
-  return params.get("next") || "registro.html";
+  return params.get("next") || "index.html";
 }
 
 async function init() {

@@ -796,6 +796,23 @@ function personaDeDetalle(m) {
   return s || (m.subcategoria || "").trim() || m.categoria;
 }
 
+/** Cómo se escribe la baja de un cobro: la app genera "Abono recibido de X" y
+ * "Castigo incobrable X"; a mano quedaron "Recupero dinero X" y "Prestamo pana X". */
+const PALABRAS_BAJA = /abono|castigo|incobrable|recupero|pr[eé]stamo/i;
+
+const mismoGrupoCobro = (a, b) =>
+  a.categoria === b.categoria &&
+  normSub(a.subcategoria) === normSub(b.subcategoria) &&
+  a.medioPago === b.medioPago &&
+  (a.fechaVencimiento || "").trim() === (b.fechaVencimiento || "").trim();
+
+/** ¿El texto nombra a esa persona como palabra entera? ("ric" no debe calzar
+ * dentro de "fabricación"). */
+function nombraA(texto, key) {
+  const t = " " + texto.replace(/[^a-z0-9áéíóúüñ]+/gi, " ") + " ";
+  return t.includes(" " + key + " ");
+}
+
 /** Separa lo pendiente en dos mundos que no se mezclan:
  *
  *   hilos  = lo que te deben, UNO POR PERSONA. Arranca en un Ingreso pendiente
@@ -826,19 +843,32 @@ function separarPendientes(pendientes) {
   const deuda = [];
   for (const m of pendientes) {
     if (m.tipo === "Ingreso") continue;
+
+    // Un Gasto solo baja un cobro si HABLA como una baja (abono, castigo,
+    // recupero, préstamo). Antes bastaba con compartir categoría, subcategoría,
+    // medio y vencimiento — y una compra normal con tarjeta que caía en el mismo
+    // grupo que una devolución por cobrar (Shopping/Paris/Cencosud) quedaba
+    // "abonando" el cobro: desaparecía de la deuda y del gasto del mes.
+    if (!PALABRAS_BAJA.test(m.detalle || "")) {
+      deuda.push(m);
+      continue;
+    }
+
     const texto = normSub(m.detalle);
-    let k = [...hilos.keys()].find((key) => key && texto.includes(key));
-    if (!k) {
-      const calzan = [...hilos.entries()].filter(([, h]) =>
-        h.movs.some(
-          (o) =>
-            o.categoria === m.categoria &&
-            normSub(o.subcategoria) === normSub(m.subcategoria) &&
-            o.medioPago === m.medioPago &&
-            (o.fechaVencimiento || "").trim() === (m.fechaVencimiento || "").trim()
-        )
-      );
-      if (calzan.length === 1) k = calzan[0][0];
+    const candidatos = [...hilos.entries()].filter(([, h]) =>
+      h.movs.some((o) => o.tipo === "Ingreso" && mismoGrupoCobro(o, m))
+    );
+    let k = null;
+    if (candidatos.length === 1) k = candidatos[0][0];
+    else if (candidatos.length > 1) {
+      // Varios cobros comparten grupo (ej. Gabi y Esteban): decide quién nombra.
+      const nombrado = candidatos.filter(([key]) => nombraA(texto, key));
+      if (nombrado.length === 1) k = nombrado[0][0];
+    } else {
+      // Nadie calza por grupo (se corrigió el vencimiento de un solo lado): si el
+      // detalle nombra a UNA persona con cobro abierto, es de ella.
+      const nombrado = [...hilos.keys()].filter((key) => key && nombraA(texto, key));
+      if (nombrado.length === 1) k = nombrado[0];
     }
     if (k) hilos.get(k).movs.push(m);
     else deuda.push(m);

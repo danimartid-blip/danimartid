@@ -1,7 +1,7 @@
 {
   "name": "Finanzas",
   "short_name": "Finanzas",
-  "start_url": "registro.html",
+  "start_url": "index.html",
   "display": "standalone",
   "background_color": "#f5f5f1",
   "theme_color": "#0e7c6b",
