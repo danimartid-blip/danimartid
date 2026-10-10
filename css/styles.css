@@ -680,6 +680,24 @@ input[type="number"] { font-variant-numeric: tabular-nums; }
 .btn-danger:active { background: color-mix(in srgb, var(--critical) 14%, transparent); transform: scale(0.985); }
 .btn-danger:disabled { opacity: .55; }
 
+/* Basurero chico al lado de cada movimiento: el atajo para sacar un duplicado
+   sin abrir el editor. Discreto a propósito (gris, sin relleno) para que no
+   compita con el monto; se pone rojo al tocarlo. El botón mide 32px de toque
+   aunque el ícono sea de 15px — en el celular uno de 15px no se atina. */
+.mov-derecha { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.btn-basurero {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; margin: -8px -6px -8px 0;
+  padding: 0; border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-muted); opacity: .65;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: color .16s var(--ease), background .16s var(--ease), opacity .16s;
+}
+.btn-basurero svg { width: 15px; height: 15px; }
+.btn-basurero:hover { opacity: 1; color: var(--critical); }
+.btn-basurero:active { background: color-mix(in srgb, var(--critical) 14%, transparent); color: var(--critical); opacity: 1; }
+.btn-basurero:disabled, .btn-basurero.cargando { opacity: .4; pointer-events: none; }
+
 .btn-link {
   background: none; border: none; color: var(--accent);
   font-size: 13.5px; font-weight: 700; padding: 10px 0 2px; cursor: pointer;

@@ -553,13 +553,17 @@ function wireSubcategoryToggles(scope) {
                 ${formatFechaCorta(m.fecha)} · ${m.detalle || "—"}
                 ${tipo === "Gasto" && m.tipo === "Ingreso" ? '<span class="badge badge-good" style="margin-left:4px;">reembolso</span>' : ""}
               </span>
-              <span class="cat-amounts ${m.tipo === "Ingreso" ? "income" : ""}">${tipo === "Gasto" && m.tipo === "Ingreso" ? "−" : ""}${fmtCLP(Math.abs(m.monto))}</span>
+              <span class="mov-derecha">
+                <span class="cat-amounts ${m.tipo === "Ingreso" ? "income" : ""}">${tipo === "Gasto" && m.tipo === "Ingreso" ? "−" : ""}${fmtCLP(Math.abs(m.monto))}</span>
+                ${botonBasurero(m)}
+              </span>
             </div>`
           )
           .join("");
         detail.innerHTML = `
           <div style="margin:10px 0 12px;">${sparkline}</div>
           ${items || '<div class="skeleton no-spinner" style="padding:6px 0;font-size:12px;">Sin movimientos este mes</div>'}`;
+        wireBasureros(detail);
       }
     });
   });
@@ -862,18 +866,71 @@ function faltaDelPresupuesto(tipo, mes) {
   }
   let falta = 0;
   let excedido = 0;
+  let reembolsoPendiente = 0;
   const excesos = [];
   for (const cat of cats) {
-    const meta = budgetForCategoria(mes, cat, tipo) || 0;
-    const real = montoRealNeto(tipo, cat, mes);
+    const { meta, real, reembPendiente } = metaYRealParaProyectar(tipo, cat, mes);
     falta += Math.max(0, meta - real);
+    reembolsoPendiente += reembPendiente;
     if (real > meta) {
       excedido += real - meta;
       excesos.push({ cat, meta, real, exceso: real - meta });
     }
   }
   excesos.sort((a, b) => b.exceso - a.exceso);
-  return { falta, excedido, excesos };
+  return { falta, excedido, excesos, reembolsoPendiente };
+}
+
+/** Presupuesto y real de una categoría para PROYECTAR el mes, con las parejas
+ * gasto/reembolso medidas en BRUTO en vez de en neto.
+ *
+ * Por qué: el presupuesto de una subcategoría con reembolso está guardado NETO
+ * (ej. Pago Prestamo: $460.346 que pagas − $233.000 que te devuelven = $227.346),
+ * pero la plata se mueve BRUTA y las dos patas caen en días distintos. Comparando
+ * neto contra neto, el mes en que el reembolso ya entró pero el gasto todavía no
+ * se pagó quedaba reservando solo el neto: los $233.000 que ya habían entrado se
+ * leían como plata libre y la liquidez quedaba inflada en ese monto hasta que se
+ * registraba el pago, momento en que "caía" sola. Lo mismo al revés (gasto pagado
+ * y reembolso aún no recibido) la dejaba deflactada.
+ *
+ * Por eso acá la meta de una pareja es el bruto (neto + lo que se espera que
+ * vuelva) y lo que falta que vuelva se devuelve aparte, como entrada pendiente:
+ * mientras no se pague, se reserva el bruto completo; cuando el reembolso todavía
+ * no llegó, se proyecta su entrada. Así la liquidez no se mueve por el ORDEN en
+ * que caen las dos patas, que es justamente lo que no debe moverla. */
+function metaYRealParaProyectar(tipo, cat, mes) {
+  if (tipo !== "Gasto") {
+    return { meta: budgetForCategoria(mes, cat, tipo) || 0, real: montoRealNeto(tipo, cat, mes), reembPendiente: 0 };
+  }
+  const subs = new Set(subcategoriasConPresupuesto(mes, cat, "Gasto").map(normSub));
+  const repr = new Map(subcategoriasConPresupuesto(mes, cat, "Gasto").map((s) => [normSub(s), s]));
+  for (const m of movimientos) {
+    if (m.tipo === "Gasto" && m.categoria === cat && monthKey(m) === mes && !filasDeHilo.has(m.fila)) {
+      const n = normSub(m.subcategoria);
+      if (!subs.has(n)) { subs.add(n); repr.set(n, m.subcategoria || ""); }
+    }
+  }
+  let meta = 0;
+  let real = 0;
+  let reembPendiente = 0;
+  for (const n of subs) {
+    const sub = repr.get(n);
+    const metaNeta = budgetForSubcategoria(mes, cat, sub, "Gasto");
+    const bd = gastoMonthlyBreakdown(cat, sub, mes, mes);
+    const info = reembolsoInfoFor(cat, sub, mes);
+    if (!info) {
+      meta += metaNeta;
+      real += bd.neto;
+      continue;
+    }
+    // Lo que se espera que vuelva: el promedio histórico, o lo que ya volvió
+    // este mes si fue más (un reembolso mayor al habitual ya está en la plata).
+    const esperado = Math.max(info.montoAvg, bd.reembolso);
+    meta += metaNeta + esperado;
+    real += bd.bruto;
+    reembPendiente += Math.max(0, esperado - bd.reembolso);
+  }
+  return { meta, real, reembPendiente };
 }
 
 /** La ficha "Fuera de presupuesto": lo gastado este mes por sobre el
@@ -998,7 +1055,12 @@ function renderIndicadores(selectedKey, d) {
   // después, cambiarle lo real por su presupuesto sería inventar.
   const esPasado = selectedKey < mesActual();
   const proyecta = hayPpto && !esPasado;
-  const ajuste = proyecta ? ingreso.falta - gasto.falta : 0;
+  // Lo que todavía tiene que ENTRAR: los ingresos presupuestados que faltan, más
+  // los reembolsos de gastos ya pagados que aún no vuelven (ver
+  // metaYRealParaProyectar: su gasto se reservó bruto, así que la vuelta tiene
+  // que proyectarse o el mes queda descontado dos veces).
+  const faltaEntrar = ingreso.falta + gasto.reembolsoPendiente;
+  const ajuste = proyecta ? faltaEntrar - gasto.falta : 0;
   const nota = !hayPpto ? "Sin presupuesto para este mes" : esPasado ? `${nombreMes} ya pasó` : "";
 
   renderFueraPresupuesto(gasto, proyecta, nombreMes);
@@ -1011,7 +1073,7 @@ function renderIndicadores(selectedKey, d) {
   // en voz alta, con los montos del mes que estás mirando.
   const fraseMes = proyecta
     ? `Después le descuentas lo que te falta gastar del presupuesto (${fmtCLP(gasto.falta)}) y le sumas lo ` +
-      `que falta entrar (${fmtCLP(ingreso.falta)}).` +
+      `que falta entrar (${fmtCLP(faltaEntrar)}).` +
       (gasto.excedido > 0
         ? ` Los ${fmtCLP(gasto.excedido)} que ya gastaste por sobre el presupuesto no se devuelven: esa plata ya salió.`
         : "")
@@ -1488,7 +1550,83 @@ function vencimientoAIso(venc) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/** Un movimiento del estado de cuenta, pinchable para corregirlo. */
+/** Borra un movimiento de la planilla, con confirmación. Es el ÚNICO camino de
+ * borrado de la app (el editor y el basurero de las filas pasan por acá), así
+ * que la verificación de que la fila no se corrió (deleteRow con `esperado`) y
+ * el aviso de lo ya pagado viven en un solo lugar.
+ *
+ * Borrar es para lo que no existió nunca: un duplicado, un cargo que el banco
+ * reversó. Para una compra que sí ocurrió y ya se pagó, lo que corresponde es
+ * marcarla pagada, no borrarla. */
+async function borrarMovimiento(m, btn) {
+  const que = [
+    `${m.categoria}${m.subcategoria ? ` / ${m.subcategoria}` : ""}`,
+    fmtCLP(Math.abs(m.monto)),
+    m.detalle ? `"${m.detalle}"` : null,
+    m.fecha,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  // Un movimiento ya Pagado entró en la suma acumulada con la que se cuadra la
+  // Conciliación: borrarlo la mueve. Se avisa, no se prohíbe — un duplicado
+  // pagado por error también hay que poder sacarlo.
+  const aviso =
+    m.estado === "Pagado"
+      ? "\n\nOJO: figura como PAGADO. Si lo borras baja lo pagado acumulado y la Conciliación va a cambiar. Bórralo solo si de verdad nunca existió (un duplicado)."
+      : "";
+  if (!confirm(`Se va a BORRAR este movimiento de la planilla:\n\n${que}${aviso}\n\nNo se puede deshacer. ¿Continuar?`)) return;
+
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  if (textoOriginal.trim()) btn.textContent = "Borrando…";
+  btn.classList.add("cargando");
+  try {
+    await window.SheetsApi.deleteRow("Movimientos", m.fila, { I: m.monto, J: m.detalle || "" });
+    // Ya está borrado en la planilla: si el refresco falla, el aviso no puede
+    // decir "no se pudo borrar".
+    showToast("Movimiento borrado");
+    if (textoOriginal.trim()) btn.textContent = "Borrado ✓";
+    await refrescarVista();
+  } catch (err) {
+    console.error(err);
+    showToast(err?.message || "No se pudo borrar", true);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove("cargando");
+    if (textoOriginal.trim() && btn.textContent === "Borrando…") btn.textContent = textoOriginal;
+  }
+}
+
+const ICONO_BASURERO =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/>' +
+  '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
+
+/** El basurero chico de una fila de movimiento. Va con `data-fila` y se
+ * conecta con wireBasureros. No se ofrece en los contra-asientos de un cobro
+ * (filasDeHilo): son la mitad de un par abono/castigo y se manejan desde su
+ * persona en "Por cobrar" — borrar solo una mitad dejaría el cobro descuadrado. */
+function botonBasurero(m) {
+  if (filasDeHilo.has(m.fila)) return "";
+  return `<button type="button" class="btn-basurero" data-fila="${m.fila}" aria-label="Borrar este movimiento" title="Borrar este movimiento">${ICONO_BASURERO}</button>`;
+}
+
+/** Conecta los basureros que haya dentro de `scope`. stopPropagation: muchas de
+ * estas filas son pinchables (abren el editor) y el toque al ícono no debe
+ * abrirlas. */
+function wireBasureros(scope) {
+  scope.querySelectorAll(".btn-basurero").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const m = movimientos.find((x) => x.fila === Number(btn.dataset.fila));
+      if (!m) return showToast("No encontré ese movimiento, recarga la página", true);
+      borrarMovimiento(m, btn);
+    });
+  });
+}
+
+/** Un movimiento del estado de cuenta, pinchable para corregirlo (y con su
+ * basurero para sacarlo directo, sin abrir el editor). */
 function filaMovEditable(m) {
   const id = `edit${++pagoUid}`;
   m._editId = id;
@@ -1498,7 +1636,10 @@ function filaMovEditable(m) {
         <strong>${m.detalle || m.categoria}</strong>
         <span style="color:var(--text-muted)"> · ${m.fecha}</span>
       </span>
-      <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
+      <span class="mov-derecha">
+        <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
+        ${botonBasurero(m)}
+      </span>
     </div>
     <div class="sub-detail" id="${id}" hidden style="margin:6px 0 10px;"></div>`;
 }
@@ -1573,39 +1714,9 @@ function wireEditoresMov(panel, movs) {
         }
       });
 
-      // Borrar es para lo que no existió nunca: un duplicado, un cargo que el
-      // banco reversó. Para una compra que sí ocurrió y ya se pagó, lo que
-      // corresponde es marcarla pagada, no borrarla.
-      caja.querySelector(".edit-borrar").addEventListener("click", async (ev) => {
+      caja.querySelector(".edit-borrar").addEventListener("click", (ev) => {
         ev.stopPropagation();
-        const btn = ev.currentTarget;
-        const que = [
-          `${m.categoria}${m.subcategoria ? ` / ${m.subcategoria}` : ""}`,
-          fmtCLP(Math.abs(m.monto)),
-          m.detalle ? `"${m.detalle}"` : null,
-          m.fecha,
-        ]
-          .filter(Boolean)
-          .join(" · ");
-        if (!confirm(`Se va a BORRAR este movimiento de la planilla:\n\n${que}\n\nNo se puede deshacer. ¿Continuar?`))
-          return;
-
-        btn.disabled = true;
-        btn.textContent = "Borrando…";
-        try {
-          await window.SheetsApi.deleteRow("Movimientos", m.fila, { I: m.monto, J: m.detalle || "" });
-          // Ya está borrado en la planilla: si el refresco falla, el aviso no
-          // puede decir "no se pudo borrar".
-          showToast("Movimiento borrado");
-          btn.textContent = "Borrado ✓";
-          await refrescarVista();
-        } catch (err) {
-          console.error(err);
-          showToast(err?.message || "No se pudo borrar", true);
-        } finally {
-          btn.disabled = false;
-          if (btn.textContent === "Borrando…") btn.textContent = "Borrar este movimiento";
-        }
+        borrarMovimiento(m, ev.currentTarget);
       });
     });
   }
@@ -1649,6 +1760,7 @@ function renderPanelPago(panel, grupo, total) {
     });
   }
   wireEditoresMov(panel, ordenados);
+  wireBasureros(panel);
 
   const input = panel.querySelector(".monto-pagado");
   const difEl = panel.querySelector(".dif-pago");
