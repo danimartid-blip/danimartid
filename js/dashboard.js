@@ -813,6 +813,15 @@ function nombraA(texto, key) {
   return t.includes(" " + key + " ");
 }
 
+const llaveEstadoCuenta = (m) => `${normSub(m.medioPago)}|||${(m.fechaVencimiento || "").trim()}`;
+
+/** Misma definición de "crédito" que usa registro.js: cualquier medio que NO sea
+ * una de tus cuentas (con saldo en la pestaña Cuentas) es una tarjeta. */
+const esCuentaReal = (medio) => cuentas.some((c) => normSub(c.nombre) === normSub(medio));
+
+const esCreditoDeTarjeta = (m, estadosDeCuenta) =>
+  !esCuentaReal(m.medioPago) && estadosDeCuenta.has(llaveEstadoCuenta(m));
+
 /** Separa lo pendiente en dos mundos que no se mezclan:
  *
  *   hilos  = lo que te deben, UNO POR PERSONA. Arranca en un Ingreso pendiente
@@ -831,9 +840,29 @@ function nombraA(texto, key) {
  * los castigos viejos, que quedaron escritos como "Castigo incobrable Banco
  * Chile" sin el nombre de la persona). Lo que no cae en ningún hilo es deuda. */
 function separarPendientes(pendientes) {
+  // Estados de cuenta reales: grupos medio+vencimiento con compras de verdad.
+  const estadosDeCuenta = new Set(
+    pendientes
+      .filter((m) => m.tipo !== "Ingreso" && !PALABRAS_BAJA.test(m.detalle || ""))
+      .map(llaveEstadoCuenta)
+  );
+
   const hilos = new Map();
+  const creditos = [];
   for (const m of pendientes) {
     if (m.tipo !== "Ingreso") continue;
+
+    // Un Ingreso pendiente sobre una TARJETA que tiene su estado de cuenta es una
+    // nota de crédito / devolución: NO es plata que te debe una persona, es un
+    // descuento de ESE estado de cuenta. Va con la deuda, neteada contra las
+    // compras de su grupo — igual que cuando todo se agrupaba por medio y
+    // vencimiento. Si se trata como cobro, una devolución + la compra que la
+    // reemplaza (que es un cambio, no un gasto nuevo) mueven la Liquidez.
+    if (esCreditoDeTarjeta(m, estadosDeCuenta)) {
+      creditos.push(m);
+      continue;
+    }
+
     const persona = personaDeDetalle(m);
     const k = normSub(persona);
     if (!hilos.has(k)) hilos.set(k, { persona, movs: [] });
@@ -873,6 +902,7 @@ function separarPendientes(pendientes) {
     if (k) hilos.get(k).movs.push(m);
     else deuda.push(m);
   }
+  deuda.push(...creditos);
   return { hilos: [...hilos.values()], deuda };
 }
 
@@ -1667,7 +1697,8 @@ function filaMovEditable(m) {
         <span style="color:var(--text-muted)"> · ${m.fecha}</span>
       </span>
       <span class="mov-derecha">
-        <span class="cat-amounts">${fmtCLP(Math.abs(m.monto))}</span>
+        ${m.tipo === "Ingreso" ? '<span class="badge badge-good" style="margin-right:4px;">crédito</span>' : ""}
+        <span class="cat-amounts${m.tipo === "Ingreso" ? " income" : ""}">${m.tipo === "Ingreso" ? "−" : ""}${fmtCLP(Math.abs(m.monto))}</span>
         ${botonBasurero(m)}
       </span>
     </div>
