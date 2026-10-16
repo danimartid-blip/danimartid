@@ -756,6 +756,7 @@ function renderStats(selectedKey) {
     pagarPronto: sumaPagar(deudaPronto),
     pagarTotal: sumaPagar(deuda),
     cobrarTotal: sumaCobrarHilos(hilos),
+    cobrarPronto: sumaCobrarPronto(hilos, hoy, cutoffPronto),
   });
   renderConciliacion(selectedKey);
   renderPorPagar(deuda);
@@ -786,6 +787,7 @@ const PREFIJOS_COBRO = [
   /^prestamo\s+(pana|a)\s+/i, /^préstamo\s+(pana|a)\s+/i, /^recupero\s+dinero\s+/i,
   /^castigo\s+incobrable\s+/i, /^devoluci[oó]n\s+(de\s+)?/i, /^pago\s+(de\s+)?/i,
 ];
+const GENERICAS_COBRO = /^(pr[eé]stamo|cobro|devoluci[oó]n|abono|pago|deuda|cuota)s?$/i;
 function personaDeDetalle(m) {
   let s = (m.detalle || "").trim();
   for (const re of PREFIJOS_COBRO) {
@@ -793,7 +795,16 @@ function personaDeDetalle(m) {
     if (corto !== s) { s = corto.trim(); break; }
   }
   s = s.replace(/\s*\([^)]*\)\s*$/, "").trim(); // "Beto (Daniel)" -> "Beto"
-  return s || (m.subcategoria || "").trim() || m.categoria;
+
+  // "Cobro prestamo" no dice a quién: sobra solo "prestamo" y la ficha mostraba
+  // un cobro llamado "prestamo". Si lo que queda es una palabra genérica, la
+  // persona está en la subcategoría ("Prestamo Manu" -> "Manu").
+  if (!s || GENERICAS_COBRO.test(s)) {
+    const sub = (m.subcategoria || "").trim();
+    const sinPrefijo = sub.replace(/^pr[eé]stamo\s+(a\s+|de\s+)?/i, "").trim();
+    return sinPrefijo || sub || m.categoria;
+  }
+  return s;
 }
 
 /** Cómo se escribe la baja de un cobro: la app genera "Abono recibido de X" y
@@ -910,6 +921,33 @@ function separarPendientes(pendientes) {
  * se abonó o castigó. Cero = saldado (no se muestra ni suma). */
 const netoHilo = (h) => h.movs.reduce((s, m) => s + m.monto, 0);
 const sumaCobrarHilos = (hilos) => hilos.reduce((s, h) => s + Math.max(0, netoHilo(h)), 0);
+
+/** La parte del por cobrar que llega dentro de la ventana de corto plazo (la
+ * misma de 40 días que ya usa lo que debés). Es lo que hace que un préstamo que
+ * te devuelven en una semana NO mueva la Liquidez: la plata salió hoy pero
+ * vuelve en el mismo horizonte en que se mide.
+ *
+ * Solo cuenta lo que vence desde HOY hasta el corte. Un cobro SIN fecha o ya
+ * VENCIDO no entra: a diferencia de una deuda (que se asume exigible), que a
+ * alguien le toque pagarte no es plata segura, y si lo contáramos, un cobro
+ * que se atrasa seguiría inflando la Liquidez justo cuando más hay que mirarla.
+ * Al vencerse sale solo de la Liquidez (y sigue en el Patrimonio). Lo que ya se
+ * abonó o castigó se descuenta, por eso se topa con lo que realmente queda. */
+function sumaCobrarPronto(hilos, hoy, corte) {
+  const desde = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  return hilos.reduce((total, h) => {
+    const queda = Math.max(0, netoHilo(h));
+    if (queda <= 0) return total;
+    const enVentana = h.movs
+      .filter((m) => m.tipo === "Ingreso")
+      .filter((m) => {
+        const d = parseFechaVenc(m.fechaVencimiento);
+        return d && d >= desde && d <= corte;
+      })
+      .reduce((s, m) => s + Math.abs(m.monto), 0);
+    return total + Math.min(queda, enVentana);
+  }, 0);
+}
 
 /** Cuánto FALTA por gastar (o entrar) del presupuesto del mes, sumando
  * categoría por categoría con piso en cero, más el detalle de lo que ya se pasó.
@@ -1146,15 +1184,19 @@ function renderIndicadores(selectedKey, d) {
     `próximos 40 días (${fmtCLP(d.pagarPronto)}).`;
 
   // 2) Liquidez — corto plazo, ya presupuestado.
-  const liquidez = saldoActual + ajuste;
+  const cobrarPronto = d.cobrarPronto || 0;
+  const liquidez = saldoActual + cobrarPronto + ajuste;
   pintar($("statLiquidezPpto"), liquidez, "hero-num");
   const estado = $("liquidezEstado");
   estado.textContent = nota;
   estado.hidden = !nota;
+  const fraseCobros = cobrarPronto > 0
+    ? ` Sumas lo que te devuelven en los próximos 40 días (${fmtCLP(cobrarPronto)}).`
+    : "";
   $("infoLiquidez").textContent = proyecta
     ? `Con cuánta plata terminas ${nombreMes} si cumples el presupuesto. Partes del saldo actual ` +
-      `(${fmtCLP(saldoActual)}). ${fraseMes}`
-    : `Igual al saldo actual (${fmtCLP(saldoActual)}): ${fraseMes}`;
+      `(${fmtCLP(saldoActual)}).${fraseCobros} ${fraseMes}`
+    : `Saldo actual (${fmtCLP(saldoActual)})${cobrarPronto > 0 ? ` más lo que te devuelven en 40 días (${fmtCLP(cobrarPronto)})` : ""}: ${fraseMes}`;
 
   // 3) Patrimonio líquido — la foto completa, también presupuestada.
   const patrimonio = basePatrimonio + ajuste;
