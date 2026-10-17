@@ -760,7 +760,7 @@ function renderStats(selectedKey) {
   });
   renderConciliacion(selectedKey);
   renderPorPagar(deuda);
-  renderPorCobrar(hilos);
+  renderPorCobrar(hilos, deuda.filter((m) => m.tipo === "Ingreso"));
 }
 
 /** Neteo por grupo (medio de pago + fecha de vencimiento) de lo "Por pagar".
@@ -1307,19 +1307,20 @@ function renderPorPagar(deuda) {
  * Antes esto iba mezclado con la deuda, agrupado por medio de pago: si Gabi,
  * Esteban y Ric te debían por la misma tarjeta y el mismo vencimiento, se veía
  * un solo número y el abono de uno bajaba la deuda de los otros. */
-function renderPorCobrar(hilos) {
+function renderPorCobrar(hilos, creditos = []) {
   const total = sumaCobrarHilos(hilos);
   Anim.numero($("statPorCobrar"), total, fmtCLP);
 
   const abiertos = hilos.filter((h) => netoHilo(h) > 0).sort((a, b) => netoHilo(b) - netoHilo(a));
-  $("footPorCobrar").textContent = abiertos.length
-    ? `${abiertos.length} persona${abiertos.length === 1 ? "" : "s"}`
-    : "Nadie te debe";
+  const partesFoot = [];
+  if (abiertos.length) partesFoot.push(`${abiertos.length} persona${abiertos.length === 1 ? "" : "s"}`);
+  if (creditos.length) partesFoot.push(`${creditos.length} ${creditos.length === 1 ? "devolución" : "devoluciones"} en tarjeta`);
+  $("footPorCobrar").textContent = partesFoot.join(" · ") || "Nadie te debe";
   pintarNetoCredito(creditoDebes, total);
 
   const cont = $("porCobrarPersonas");
   cont.innerHTML = "";
-  if (abiertos.length === 0) {
+  if (abiertos.length === 0 && creditos.length === 0) {
     cont.innerHTML = '<div class="skeleton no-spinner">Nadie te debe nada</div>';
     return;
   }
@@ -1351,6 +1352,48 @@ function renderPorCobrar(hilos) {
     });
     cont.appendChild(row);
   }
+
+  if (creditos.length) cont.appendChild(bloqueDevolucionesTarjeta(creditos));
+}
+
+/** Las devoluciones/notas de crédito que te van a llegar POR TARJETA (una compra
+ * reversada, una NC de una tienda). No son plata que te deba una persona: bajan
+ * el estado de cuenta de esa tarjeta, así que ya están restadas de "Debes". Antes
+ * no se veían en ninguna parte (quedaban como una fila perdida entre decenas de
+ * compras), y no se suman al total de "Te deben" justamente para no contarlas
+ * dos veces. */
+function bloqueDevolucionesTarjeta(creditos) {
+  const total = creditos.reduce((s, m) => s + Math.abs(m.monto), 0);
+  const filas = creditos
+    .slice()
+    .sort((a, b) => Math.abs(b.monto) - Math.abs(a.monto))
+    .map((m) => {
+      const venc = fechaVencLegible(m.fechaVencimiento, parseFechaVenc(m.fechaVencimiento));
+      return `<div class="category-row-top" style="padding:5px 0;font-size:12px;">
+        <span style="color:var(--text-secondary)">
+          <strong>${m.detalle || m.categoria}</strong>
+          <span style="color:var(--text-muted)"> · ${m.medioPago} · baja el estado del ${venc}</span>
+        </span>
+        <span class="mov-derecha">
+          <span class="cat-amounts income">${fmtCLP(Math.abs(m.monto))}</span>
+          ${botonBasurero(m)}
+        </span>
+      </div>`;
+    })
+    .join("");
+  const bloque = document.createElement("div");
+  bloque.className = "category-row";
+  bloque.innerHTML = `
+    <div class="category-row-top">
+      <span class="cat-name">Devoluciones en tu tarjeta</span>
+      <span class="cat-amounts income">${fmtCLP(total)}</span>
+    </div>
+    <div style="font-size:11.5px;margin:3px 0 8px;color:var(--text-muted);line-height:1.5;">
+      Ya están descontadas de lo que debes: no se suman al total de arriba.
+    </div>
+    ${filas}`;
+  wireBasureros(bloque);
+  return bloque;
 }
 
 /** Dentro de una fecha: una fila por medio de pago — el estado de cuenta que
