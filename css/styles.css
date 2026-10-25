@@ -713,6 +713,26 @@ input[type="number"] { font-variant-numeric: tabular-nums; }
   animation: revealDown .2s var(--ease);
 }
 
+/* dato a mano de una subcategoría (ej. N° de cliente del agua), bajo el campo
+ * Subcategoría: se toca y se copia */
+.dato-sub {
+  margin-top: 8px;
+  padding: 4px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  animation: revealDown .2s var(--ease);
+}
+.dato-fila {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+  width: 100%; padding: 8px 0;
+  background: none; border: 0; text-align: left; cursor: pointer;
+  font: inherit; font-size: 12.5px; color: var(--text-secondary);
+  -webkit-tap-highlight-color: transparent;
+}
+.dato-fila strong { color: var(--text); font-size: 15px; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.dato-fila .dato-copiar { margin-left: auto; color: var(--accent); font-weight: 700; }
+
 /* conversión USD -> CLP automática, bajo el campo Monto cuando el medio de
  * pago es una tarjeta en dólares */
 .usd-hint {

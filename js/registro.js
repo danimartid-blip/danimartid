@@ -198,6 +198,60 @@ async function loadOptions() {
   } catch (err) {
     console.error("No se pudieron cargar categorías existentes:", err);
   }
+  await cargarDatos();
+}
+
+/** Datos a mano por subcategoría (pestaña "Datos" de la planilla: Subcategoria,
+ * Etiqueta, Valor, Nota) — ej. el N° de cliente del agua, para tenerlo a la mano
+ * al registrar el pago. Viven en la planilla privada y NO en el código, porque el
+ * repo es público. Si la pestaña no existe o falla, simplemente no se muestra. */
+let datosPorSub = {};
+async function cargarDatos() {
+  try {
+    const rows = await window.SheetsApi.readRangeRaw("Datos!A2:D200");
+    datosPorSub = {};
+    for (const [sub, etiqueta, valor] of rows) {
+      if (!sub || !valor) continue;
+      (datosPorSub[String(sub).trim().toLowerCase()] ||= []).push({ etiqueta: etiqueta || "Dato", valor: String(valor) });
+    }
+  } catch (err) {
+    console.warn("Sin pestaña Datos:", err);
+    datosPorSub = {};
+  }
+}
+
+function mostrarDatoSub() {
+  const box = $("datoSub");
+  const datos = datosPorSub[$("subcategoria").value.trim().toLowerCase()];
+  if (!datos || !datos.length) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  box.replaceChildren();
+  for (const d of datos) {
+    const fila = document.createElement("button");
+    fila.type = "button";
+    fila.className = "dato-fila";
+    const et = document.createElement("span");
+    et.textContent = d.etiqueta;
+    const val = document.createElement("strong");
+    val.textContent = d.valor;
+    const copiar = document.createElement("span");
+    copiar.className = "dato-copiar";
+    copiar.textContent = "Copiar";
+    fila.append(et, val, copiar);
+    fila.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(d.valor);
+        copiar.textContent = "Copiado ✓";
+      } catch {
+        copiar.textContent = "Mantén pulsado para copiar";
+      }
+      setTimeout(() => (copiar.textContent = "Copiar"), 1800);
+    });
+    box.appendChild(fila);
+  }
 }
 
 /** Próximas fechas de vencimiento sugeridas, según el día en que suele vencer
@@ -359,6 +413,7 @@ function resetFormForNextEntry() {
   $("monto").value = "";
   $("categoria").value = "";
   $("subcategoria").value = "";
+  mostrarDatoSub();
   $("medioPago").value = "";
   $("detalle").value = "";
   $("fecha").value = todayISO();
@@ -571,6 +626,8 @@ async function init() {
   $("fecha").addEventListener("change", actualizarUsdHint);
   $("categoria").addEventListener("change", updateSubcategorias);
   $("categoria").addEventListener("input", updateSubcategorias);
+  $("subcategoria").addEventListener("input", mostrarDatoSub);
+  $("subcategoria").addEventListener("change", mostrarDatoSub);
   $("toggleCuota").addEventListener("click", () => {
     const section = $("cuotaSection");
     section.hidden = !section.hidden;
