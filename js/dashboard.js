@@ -34,6 +34,27 @@ let cuentas = []; // { nombre, saldo }
  * en loadData, con separarPendientes. */
 let filasDeHilo = new Set();
 
+/** Filas de TRASPASO con el ahorro que se anulan entre sí dentro del mes: el
+ * "Retiro Ahorro/Bono" (Ingreso) y el Gasto de Ahorro con que lo devuelves. Tus
+ * ahorros no están en la planilla, así que sacar plata y volver a meterla es
+ * solo cambiarla de bolsillo: no es ingreso ni es gasto, y no puede aparecer
+ * como "gastaste de más" en una categoría sin presupuesto. Se recalcula en
+ * loadData con emparejarTraspasosAhorro. */
+let filasTraspaso = new Set();
+
+/** Fila que no cuenta como ingreso/gasto real del mes: el contra-asiento de un
+ * cobro o un traspaso con el ahorro ya devuelto. (El basurero sigue mirando solo
+ * filasDeHilo: un traspaso sí se puede borrar a mano.) */
+const esFilaAparte = (fila) => filasDeHilo.has(fila) || filasTraspaso.has(fila);
+
+/** Lo que de verdad queda por cobrar de un Ingreso pendiente que abrió un cobro:
+ * su monto menos lo ya abonado o castigado (los contra-asientos de filasDeHilo).
+ * Sin esto, al saldarse un préstamo el Ingreso original ($1M) y el pago recibido
+ * ($1M) se leían los dos como reembolso del mismo Gasto — $2M devueltos de un
+ * préstamo de $1M, con la liquidez $1M más abajo. fila -> monto vivo. */
+let ingresoVivo = new Map();
+const montoIngresoVivo = (m) => (ingresoVivo.has(m.fila) ? ingresoVivo.get(m.fila) : m.monto);
+
 /** The n month-keys strictly before `mes`, oldest to newest. Mirrors presupuesto.js
  * so both pages always agree on the "proposed" budget when nothing is fijado. */
 function monthsBeforeExclusive(mes, n) {
@@ -94,13 +115,13 @@ function gastoMonthlyBreakdown(categoria, subcategoria, mes, anchorMes = mes) {
   let reembolsoLabel = null;
   for (const m of movimientos) {
     if (m.categoria !== categoria || monthKey(m) !== mes) continue;
-    if (filasDeHilo.has(m.fila)) continue; // contra-asiento de un cobro, no es gasto real
+    if (esFilaAparte(m.fila)) continue; // contra-asiento de un cobro o traspaso con el ahorro
     if (m.tipo === "Gasto" && normSub(m.subcategoria) === sub) bruto += Math.abs(m.monto);
     else if (m.tipo === "Ingreso") {
       const exact = normSub(m.subcategoria) === sub;
       const paired = pairMode && normSub(m.subcategoria) === ingresoBucket;
       if (exact || paired) {
-        reembolso += m.monto;
+        reembolso += montoIngresoVivo(m);
         if (paired && !exact) reembolsoLabel = m.subcategoria;
       }
     }
@@ -145,7 +166,7 @@ function montoRealNeto(tipo, categoria, mes, subcategoria, anchorMes = mes) {
   if (tipo === "Gasto") {
     const gastoSubs = new Set();
     for (const m of movimientos)
-      if (m.tipo === "Gasto" && m.categoria === categoria && monthKey(m) === mes && !filasDeHilo.has(m.fila))
+      if (m.tipo === "Gasto" && m.categoria === categoria && monthKey(m) === mes && !esFilaAparte(m.fila))
         gastoSubs.add(m.subcategoria || "");
     let total = 0;
     for (const sub of gastoSubs) total += gastoMonthlyBreakdown(categoria, sub, mes, anchorMes).neto;
@@ -162,6 +183,7 @@ function montoRealNeto(tipo, categoria, mes, subcategoria, anchorMes = mes) {
   let total = 0;
   for (const m of movimientos) {
     if (m.categoria !== categoria || monthKey(m) !== mes || m.tipo !== tipo) continue;
+    if (esFilaAparte(m.fila)) continue;
     if (subcategoria !== undefined && normSub(m.subcategoria) !== normSub(subcategoria)) continue;
     if (esMovReembolso(m, anchorMes)) continue;
     total += Math.abs(m.monto);
@@ -393,9 +415,10 @@ function monthlyTotals(categoria, subSentinel) {
   for (const m of movimientos) {
     if (m.categoria !== categoria) continue;
     if (subSentinel !== undefined && (m.subcategoria || "(sin subcategoría)") !== subSentinel) continue;
+    if (esFilaAparte(m.fila)) continue;
     const key = monthKey(m);
     if (m.tipo === "Gasto") out[key] = (out[key] || 0) + Math.abs(m.monto);
-    else if (m.tipo === "Ingreso") out[key] = (out[key] || 0) - m.monto;
+    else if (m.tipo === "Ingreso") out[key] = (out[key] || 0) - montoIngresoVivo(m);
   }
   return out;
 }
@@ -411,6 +434,7 @@ function monthlyTotalsTipo(tipo, categoria, subSentinel, anchorMes) {
   for (const m of movimientos) {
     if (m.tipo !== tipo || m.categoria !== categoria) continue;
     if (subSentinel !== undefined && (m.subcategoria || "(sin subcategoría)") !== subSentinel) continue;
+    if (esFilaAparte(m.fila)) continue;
     if (tipo === "Ingreso" && anchorMes !== undefined && esMovReembolso(m, anchorMes)) continue;
     const key = monthKey(m);
     out[key] = (out[key] || 0) + Math.abs(m.monto);
@@ -637,7 +661,7 @@ function buildCategoryList(tipo, selectedKey, inMonth) {
   // fuera plata nueva, cuando ya está restada del lado del Gasto.
   const categoriasConMov = new Set(
     inMonth
-      .filter((m) => m.tipo === tipo && !filasDeHilo.has(m.fila) && !(tipo === "Ingreso" && esMovReembolso(m, selectedKey)))
+      .filter((m) => m.tipo === tipo && !esFilaAparte(m.fila) && !(tipo === "Ingreso" && esMovReembolso(m, selectedKey)))
       .map((m) => m.categoria)
   );
   for (const cat of categoriasForTipo(tipo, selectedKey)) {
@@ -677,7 +701,7 @@ function buildCategoryList(tipo, selectedKey, inMonth) {
           (m) =>
             m.tipo === tipo &&
             m.categoria === cat &&
-            !filasDeHilo.has(m.fila) &&
+            !esFilaAparte(m.fila) &&
             !(tipo === "Ingreso" && esMovReembolso(m, selectedKey))
         )
         .map((m) => m.subcategoria || "(sin subcategoría)")
@@ -718,11 +742,28 @@ function buildCategoryList(tipo, selectedKey, inMonth) {
   Anim.barras(list); // las barras crecen de 0 a su ancho al cargar
 }
 
+/** Avisa de la ida y vuelta con el ahorro que NO se cuenta como ingreso ni gasto
+ * (ver emparejarTraspasosAhorro), para que no parezca que se perdió plata de la
+ * lista: el retiro y la devolución no aparecen en Ingresos ni en Gastos. */
+function pintarNotaTraspasos(inMonth) {
+  const nota = $("notaTraspasos");
+  if (!nota) return;
+  const filas = inMonth.filter((m) => filasTraspaso.has(m.fila));
+  const sacado = filas.filter((m) => m.tipo === "Ingreso").reduce((s, m) => s + Math.abs(m.monto), 0);
+  const repuesto = filas.filter((m) => m.tipo === "Gasto").reduce((s, m) => s + Math.abs(m.monto), 0);
+  nota.hidden = filas.length === 0;
+  if (filas.length === 0) return;
+  nota.textContent =
+    `Ahorro: sacaste ${fmtCLP(sacado)} y repusiste ${fmtCLP(repuesto)}. ` +
+    "Es plata cambiando de bolsillo, así que no cuenta como ingreso ni como gasto del mes.";
+}
+
 function renderStats(selectedKey) {
   const inMonth = movimientos.filter((m) => monthKey(m) === selectedKey);
 
   buildCategoryList("Gasto", selectedKey, inMonth);
   buildCategoryList("Ingreso", selectedKey, inMonth);
+  pintarNotaTraspasos(inMonth);
 
   // Pendiente (global, no filtrado por mes), separado de una vez en deuda tuya
   // y hilos de cobro por persona — ver separarPendientes.
@@ -960,7 +1001,7 @@ function sumaCobrarPronto(hilos, hoy, corte) {
 function faltaDelPresupuesto(tipo, mes) {
   const cats = new Set(categoriasForTipo(tipo, mes));
   for (const m of movimientos) {
-    if (m.tipo === tipo && monthKey(m) === mes && !filasDeHilo.has(m.fila)) cats.add(m.categoria);
+    if (m.tipo === tipo && monthKey(m) === mes && !esFilaAparte(m.fila)) cats.add(m.categoria);
   }
   let falta = 0;
   let excedido = 0;
@@ -1003,7 +1044,7 @@ function metaYRealParaProyectar(tipo, cat, mes) {
   const subs = new Set(subcategoriasConPresupuesto(mes, cat, "Gasto").map(normSub));
   const repr = new Map(subcategoriasConPresupuesto(mes, cat, "Gasto").map((s) => [normSub(s), s]));
   for (const m of movimientos) {
-    if (m.tipo === "Gasto" && m.categoria === cat && monthKey(m) === mes && !filasDeHilo.has(m.fila)) {
+    if (m.tipo === "Gasto" && m.categoria === cat && monthKey(m) === mes && !esFilaAparte(m.fila)) {
       const n = normSub(m.subcategoria);
       if (!subs.has(n)) { subs.add(n); repr.set(n, m.subcategoria || ""); }
     }
@@ -2130,7 +2171,7 @@ function renderTrend() {
   for (const m of movimientos) {
     if (m.tipo !== "Ingreso") continue;
     const key = monthKey(m);
-    if (!byMonth[key]) continue;
+    if (!byMonth[key] || esFilaAparte(m.fila)) continue;
     // Un Ingreso que ya se restó como reembolso del lado del Gasto (arriba) no
     // se vuelve a sumar acá — se contaría dos veces.
     const mesesRelevantes = [...monthsBeforeExclusive(key, 3), key];
@@ -2308,6 +2349,74 @@ async function loadData() {
 
   const { hilos } = separarPendientes(movimientos.filter((m) => m.estado === "Por pagar"));
   filasDeHilo = new Set(hilos.flatMap((h) => h.movs.filter((m) => m.tipo !== "Ingreso").map((m) => m.fila)));
+  ingresoVivo = ingresosVivosDeHilos(hilos);
+  filasTraspaso = emparejarTraspasosAhorro(movimientos);
+}
+
+/** Por cada cobro abierto, cuánto de su Ingreso original sigue sin cobrar: el
+ * monto menos los ABONOS del hilo, descontados en orden.
+ *
+ * Los castigos NO se descuentan: no entró plata, y la pérdida ya quedó anotada
+ * aparte como Gasto "Incobrable". Si además se sacara el Ingreso original, esa
+ * pérdida se contaría dos veces. Un abono es distinto: la plata sí entró y quedó
+ * como otro Ingreso, así que el original tiene que dejar de contar. */
+function ingresosVivosDeHilos(hilos) {
+  const out = new Map();
+  for (const h of hilos) {
+    let bajas = h.movs
+      .filter((m) => m.tipo !== "Ingreso" && !/castigo|incobrable/i.test(m.detalle || ""))
+      .reduce((s, m) => s + Math.abs(m.monto), 0);
+    for (const m of h.movs.filter((x) => x.tipo === "Ingreso")) {
+      const quita = Math.min(m.monto, bajas);
+      bajas -= quita;
+      if (quita > 0) out.set(m.fila, m.monto - quita);
+    }
+  }
+  return out;
+}
+
+/** Empareja los retiros del ahorro con lo que se devuelve al ahorro, para que
+ * esa ida y vuelta no cuente como ingreso ni como gasto.
+ *
+ * Retiro = Ingreso con subcategoría "Retiro ..." (Retiro Ahorro, Retiro Bono).
+ * Devolución = Gasto de categoría Ahorro en la subcategoría genérica "Bono" o
+ * "Ahorro" (los dos bolsillos de los retiros); los aportes planificados (Ahorro
+ * Benja, Navidad, Perfume...) NO son devoluciones y siguen contando.
+ *
+ * Una devolución se empareja con retiros del MISMO mes o del anterior, solo si
+ * calza exacto: con un retiro, o con los retiros más antiguos sumados. Una
+ * devolución parcial no se toca (se sigue viendo como gasto) hasta que calce. */
+function emparejarTraspasosAhorro(movs) {
+  const pagados = movs.filter((m) => m.estado === "Pagado" && !esFilaAparte(m.fila));
+  const retiros = pagados.filter((m) => m.tipo === "Ingreso" && /^retiro/.test(normSub(m.subcategoria)));
+  const vueltas = pagados.filter(
+    (m) => m.tipo === "Gasto" && normSub(m.categoria) === "ahorro" && ["bono", "ahorro"].includes(normSub(m.subcategoria))
+  );
+  const usados = new Set();
+  const out = new Set();
+  const mesAnterior = (k) => monthsBeforeExclusive(k, 1)[0];
+  for (const v of vueltas.sort((a, b) => a.fila - b.fila)) {
+    const k = monthKey(v);
+    const pozo = retiros
+      .filter((r) => !usados.has(r.fila) && (monthKey(r) === k || monthKey(r) === mesAnterior(k)))
+      .sort((a, b) => a.fila - b.fila);
+    const monto = Math.abs(v.monto);
+    let elegidos = pozo.filter((r) => Math.abs(r.monto) === monto).slice(0, 1);
+    if (!elegidos.length) {
+      let acum = 0;
+      const prefijo = [];
+      for (const r of pozo) {
+        prefijo.push(r);
+        acum += Math.abs(r.monto);
+        if (acum === monto) { elegidos = prefijo; break; }
+        if (acum > monto) break;
+      }
+    }
+    if (!elegidos.length) continue;
+    out.add(v.fila);
+    for (const r of elegidos) { usados.add(r.fila); out.add(r.fila); }
+  }
+  return out;
 }
 
 async function init() {
