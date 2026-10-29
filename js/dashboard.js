@@ -1350,7 +1350,12 @@ function renderPorPagar(deuda) {
  * un solo número y el abono de uno bajaba la deuda de los otros. */
 function renderPorCobrar(hilos, creditos = []) {
   const total = sumaCobrarHilos(hilos);
-  Anim.numero($("statPorCobrar"), total, fmtCLP);
+  // El número grande SÍ incluye las devoluciones en tarjeta: es plata que te
+  // vuelve, y abrir la ficha mostraba 3 cosas bajo un "$0". Es solo lo que se
+  // muestra — Patrimonio usa cobrarTotal (solo personas) y el Neto de abajo
+  // también, porque esas devoluciones ya están restadas dentro de Debes.
+  const devoluciones = creditos.reduce((s, m) => s + Math.abs(m.monto), 0);
+  Anim.numero($("statPorCobrar"), total + devoluciones, fmtCLP);
 
   const abiertos = hilos.filter((h) => netoHilo(h) > 0).sort((a, b) => netoHilo(b) - netoHilo(a));
   const partesFoot = [];
@@ -1401,8 +1406,8 @@ function renderPorCobrar(hilos, creditos = []) {
  * reversada, una NC de una tienda). No son plata que te deba una persona: bajan
  * el estado de cuenta de esa tarjeta, así que ya están restadas de "Debes". Antes
  * no se veían en ninguna parte (quedaban como una fila perdida entre decenas de
- * compras), y no se suman al total de "Te deben" justamente para no contarlas
- * dos veces. */
+ * compras). Se muestran en el número de "Te deben", pero Patrimonio y el Neto
+ * no las vuelven a sumar: ya están restadas de "Debes". */
 function bloqueDevolucionesTarjeta(creditos) {
   const total = creditos.reduce((s, m) => s + Math.abs(m.monto), 0);
   const filas = creditos
@@ -1430,7 +1435,7 @@ function bloqueDevolucionesTarjeta(creditos) {
       <span class="cat-amounts income">${fmtCLP(total)}</span>
     </div>
     <div style="font-size:11.5px;margin:3px 0 8px;color:var(--text-muted);line-height:1.5;">
-      Ya están descontadas de lo que debes: no se suman al total de arriba.
+      Ya están descontadas de lo que debes, así que el Neto de arriba no las cuenta dos veces.
     </div>
     ${filas}`;
   wireBasureros(bloque);
