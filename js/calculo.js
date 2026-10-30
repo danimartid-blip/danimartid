@@ -308,6 +308,8 @@ function parseMovimientos(rows) {
       monto: Number(r[8]) || 0,
       detalle: r[9] || "",
       fechaVencimiento: r[10] || "",
+      cuotaN: Number(r[11]) || 0, // Cuota_devengada (solo si la lectura llega hasta la columna L)
+      cuotasTotales: Number(r[12]) || 0,
     }))
     .filter((m) => m.fecha);
 }
@@ -600,6 +602,7 @@ function prepararCalculo(movRows, presRows, cuentasRows) {
   filasDeHilo = new Set(hilos.flatMap((h) => h.movs.filter((m) => m.tipo !== "Ingreso").map((m) => m.fila)));
   ingresoVivo = ingresosVivosDeHilos(hilos);
   filasTraspaso = emparejarTraspasosAhorro(movimientos);
+  origenCuota = armarOrigenCuotas(movimientos);
   return { hilos, canon };
 }
 
@@ -625,4 +628,57 @@ function consumoPresupuesto(categoria, subcategoria, mes) {
     consumido: gastoMonthlyBreakdown(categoria, subcategoria, mes).neto,
     conReembolso: reembolsoInfoFor(categoria, subcategoria, mes) !== null,
   };
+}
+
+/** Mes en que empezó a deberse cada cuota futura: fila -> "YYYY-MM". Una compra en
+ * 3 cuotas es deuda COMPLETA desde el día de la compra, aunque las cuotas 2 y 3 queden
+ * con fecha de los meses que vienen. Una cuota n≥2 se liga a la cuota anterior de su
+ * serie (misma categoría, subcategoría, medio y total de cuotas, monto igual con
+ * hasta $3 de redondeo, del mismo mes o antes): su origen es el mes de la primera.
+ * Si no se encuentra la serie, la fila cuenta en su propio mes (lo conservador). */
+let origenCuota = new Map();
+function armarOrigenCuotas(movs) {
+  const familias = new Map();
+  for (const m of movs) {
+    if (m.cuotasTotales > 1) {
+      const k = [m.categoria, normSub(m.subcategoria), normSub(m.medioPago), m.cuotasTotales].join("|");
+      if (!familias.has(k)) familias.set(k, []);
+      familias.get(k).push(m);
+    }
+  }
+  const out = new Map();
+  for (const fam of familias.values()) {
+    for (const m of fam) {
+      if (m.cuotaN <= 1) continue;
+      const previas = fam.filter(
+        (o) => o.cuotaN < m.cuotaN && Math.abs(Math.abs(o.monto) - Math.abs(m.monto)) <= 3 && monthKey(o) <= monthKey(m)
+      );
+      if (previas.length) out.set(m.fila, previas.map(monthKey).sort()[0]);
+    }
+  }
+  return out;
+}
+const mesOrigen = (m) => origenCuota.get(m.fila) || monthKey(m);
+
+/** Patrimonio líquido REAL al cierre de un mes pasado: la suma de todo lo
+ * registrado hasta ese mes, pagado o por pagar, sin presupuesto ni proyección.
+ *
+ * Por qué sirve: el patrimonio es lo que tienes en cuentas, menos lo que debes, más
+ * lo que te deben, y cada compra con tarjeta ya es deuda ese mismo día. Contar todo
+ * por su fecha da el mismo resultado sin importar cuándo pagaste ni cuándo
+ * conciliaste (que es justo lo que no se guarda en la planilla). Los castigos
+ * "Incobrable" se dejan fuera: ya vienen contados en el contra-asiento del cobro y
+ * no movieron plata (misma regla de la Conciliación).
+ *
+ * Verificado con datos reales: al día de hoy da EXACTAMENTE Cuentas − Debes + Te deben
+ * (mientras la Conciliación esté en $0), y en 5 fechas de sept/oct-2026 coincide
+ * con lo calculado desde los saldos del banco (pestaña Conciliaciones) con una
+ * diferencia de $0 a $24.000. */
+function patrimonioAlCierre(mes) {
+  let total = 0;
+  for (const m of movimientos) {
+    if (normSub(m.subcategoria) === "incobrable") continue;
+    if (mesOrigen(m) <= mes) total += m.monto;
+  }
+  return total;
 }

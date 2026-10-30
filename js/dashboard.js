@@ -691,17 +691,19 @@ function renderIndicadores(selectedKey, d) {
   const [y, mo] = selectedKey.split("-");
   const nombreMes = `${MESES[Number(mo)]} ${y}`;
   const hayPpto = ingresoPpto !== 0 || gastoPpto !== 0;
-  // Un mes pasado no se proyecta: lo que tenés hoy ya incluye todo lo que vino
-  // después, cambiarle lo real por su presupuesto sería inventar.
+  // Solo el mes en curso se proyecta con presupuesto. Un mes pasado muestra lo que
+  // de verdad había al cierre (ver patrimonioAlCierre), y uno futuro no tiene datos
+  // reales: mostrar el saldo de hoy con otro mes puesto encima sería mentirle.
   const esPasado = selectedKey < mesActual();
-  const proyecta = hayPpto && !esPasado;
+  const esFuturo = selectedKey > mesActual();
+  const proyecta = hayPpto && !esPasado && !esFuturo;
   // Lo que todavía tiene que ENTRAR: los ingresos presupuestados que faltan, más
   // los reembolsos de gastos ya pagados que aún no vuelven (ver
   // metaYRealParaProyectar: su gasto se reservó bruto, así que la vuelta tiene
   // que proyectarse o el mes queda descontado dos veces).
   const faltaEntrar = ingreso.falta + gasto.reembolsoPendiente;
   const ajuste = proyecta ? faltaEntrar - gasto.falta : 0;
-  const nota = !hayPpto ? "Sin presupuesto para este mes" : esPasado ? `${nombreMes} ya pasó` : "";
+  const nota = esFuturo ? "Mes futuro" : esPasado ? `${nombreMes} ya pasó` : !hayPpto ? "Sin presupuesto para este mes" : "";
 
   renderFueraPresupuesto(gasto, proyecta, nombreMes);
 
@@ -709,6 +711,44 @@ function renderIndicadores(selectedKey, d) {
     Anim.numero(el, valor, fmtCLP);
     el.className = `stat-value ${clase} ` + (valor >= 0 ? "income" : "expense");
   };
+  // Un número que no existe para ese mes se escribe "—": mejor nada que uno falso.
+  const sinNumero = (el, clase) => {
+    if (el._animRaf) cancelAnimationFrame(el._animRaf);
+    el._animRaf = null;
+    el.textContent = "—";
+    el.className = `stat-value ${clase}`;
+  };
+  const estadoPatrimonio = $("patrimonioEstado");
+  const ponerEstadoPatrimonio = (texto) => {
+    estadoPatrimonio.textContent = texto;
+    estadoPatrimonio.hidden = !texto;
+  };
+
+  // Mes pasado o futuro: solo el patrimonio tiene versión histórica real. Saldo actual
+  // y Liquidez dependen de qué estaba pagado y qué vencía en esa fecha, y la planilla no
+  // guarda ese dato; se dejan en blanco en vez de repetir el número de hoy.
+  if (esPasado || esFuturo) {
+    const sinHistoria = "Solo se calcula para el mes en curso";
+    sinNumero($("liquidezRealValue"), "hero-num-sm");
+    sinNumero($("statLiquidezPpto"), "hero-num");
+    $("infoSaldo").textContent = sinHistoria + ": depende de qué estaba por pagar ese día.";
+    $("liquidezEstado").textContent = esFuturo ? "Mes futuro" : sinHistoria;
+    $("liquidezEstado").hidden = false;
+    $("infoLiquidez").textContent = sinHistoria + ": usa el presupuesto del mes y lo que debías en ese momento.";
+    if (esFuturo) {
+      sinNumero($("statPatrimonioLiquido"), "hero-num");
+      ponerEstadoPatrimonio("Mes futuro: todavía no hay datos reales");
+      $("infoPatrimonio").textContent = "Un mes que no ha llegado no tiene patrimonio real que mostrar.";
+    } else {
+      pintar($("statPatrimonioLiquido"), patrimonioAlCierre(selectedKey), "hero-num");
+      ponerEstadoPatrimonio(`Real al cierre de ${nombreMes}, sin presupuesto`);
+      $("infoPatrimonio").textContent =
+        `Cómo estabas al cierre de ${nombreMes}: la suma de todo lo registrado hasta ese mes, pagado o por pagar. ` +
+        "Una compra con tarjeta ya es deuda ese día, y las cuotas contratadas se cuentan completas desde la primera. " +
+        "No usa presupuesto ni proyección.";
+    }
+    return;
+  }
   // Textos del "?": cortos y en chileno. Cada uno se lee como la fórmula dicha
   // en voz alta, con los montos del mes que estás mirando.
   const fraseMes = proyecta
@@ -743,11 +783,18 @@ function renderIndicadores(selectedKey, d) {
   // 3) Patrimonio líquido — la foto completa, también presupuestada.
   const patrimonio = basePatrimonio + ajuste;
   pintar($("statPatrimonioLiquido"), patrimonio, "hero-num");
+  // Lo que de verdad tienes hoy, a la vista: el número grande ya descuenta lo que aún
+  // falta gastar del presupuesto, y eso puede dejarlo en negativo aunque hoy estés bien.
+  ponerEstadoPatrimonio(proyecta ? `Hoy, sin proyectar: ${fmtCLP(basePatrimonio)}` : "");
   $("infoPatrimonio").textContent =
     `Lo mismo, pero contando toda la deuda (venza cuando venza) y todo lo que te deben: ` +
     `${fmtCLP(d.totalCuentas)} de tus cuentas, menos ${fmtCLP(d.pagarTotal)} que debes, más ` +
     `${fmtCLP(d.cobrarTotal)} que te deben = ${fmtCLP(basePatrimonio)}. ` +
-    (proyecta ? "Después, el mismo cambio por presupuesto que la liquidez." : fraseMes);
+    (proyecta
+      ? "Después, el mismo cambio por presupuesto que la liquidez. Ojo: es un escenario, no la plata de hoy: " +
+        "supone que gastas todo lo que queda del presupuesto antes de fin de mes. Tu patrimonio real de hoy, " +
+        `sin proyectar, es ${fmtCLP(basePatrimonio)}.`
+      : fraseMes);
 }
 
 /** Lo que se debe, guardado entre renderPorPagar y renderPorCobrar para poder
