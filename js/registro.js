@@ -145,14 +145,17 @@ async function actualizarUsdHint() {
   const [dd, mm, yyyy] = dolar.fechaUsada.split("-");
   hint.textContent = `≈ ${fmtCLP(montoClp)} CLP · dólar $${dolar.valor.toLocaleString("es-CL")} del ${dd}/${mm}/${yyyy}`;
   conversionUsdActual = { fechaISO, montoUsd, valor: dolar.valor, montoClp };
+  actualizarPresupuesto();
 }
 
 async function loadOptions() {
   try {
     // A=Fecha E=Categoria F=Subcategoria G=Medio_pago H=Estado I=Monto J=Detalle K=Fecha_vencimiento
-    const [rows, cuentasRows] = await Promise.all([
+    const [rows, cuentasRows, presRows] = await Promise.all([
       window.SheetsApi.readRange("Movimientos!A2:K100000"),
-      window.SheetsApi.readRange("Cuentas!A2:A100"),
+      window.SheetsApi.readRange("Cuentas!A2:C1000"),
+      // Solo alimenta la barra de presupuesto: si falla, el resto de Registrar sigue.
+      window.SheetsApi.readRange("Presupuesto!A2:E10000").catch(() => null),
     ]);
     cuentasReales = new Set(cuentasRows.filter((r) => r[0]).map((r) => r[0].trim().toLowerCase()));
     const categorias = [];
@@ -195,10 +198,177 @@ async function loadOptions() {
 
     fillDatalist("categoriaList", categorias);
     fillDatalist("medioPagoList", medios);
+
+    // Misma preparación que el Dashboard (js/calculo.js): así la barra de
+    // presupuesto muestra los mismos números que ves allá.
+    calculoListo = false;
+    if (presRows) {
+      try {
+        prepararCalculo(rows, presRows, cuentasRows);
+        calculoListo = true;
+      } catch (err) {
+        console.error("No se pudo preparar el cálculo de presupuesto:", err);
+      }
+    }
   } catch (err) {
     console.error("No se pudieron cargar categorías existentes:", err);
   }
   await cargarDatos();
+  actualizarPresupuesto();
+}
+
+/** ¿Está listo el cálculo compartido (calculo.js) para la barra de presupuesto? */
+let calculoListo = false;
+
+const MESES_CORTOS = ["", "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+/** Una barra de presupuesto: verde = lo que ya llevas, amarillo = lo que estás
+ * metiendo ahora, gris = lo que queda. Lo que pase del presupuesto va en rojo (el
+ * trozo rayado es la parte de ESTE gasto que se pasa), con una marca donde termina
+ * el presupuesto. Todo con textContent: lo tipeado nunca entra como HTML. */
+function pintarBarraPresupuesto(box, { titulo, meta, consumido, extra, nota }) {
+  box.replaceChildren();
+  const el = (tag, cls, txt) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (txt !== undefined) e.textContent = txt;
+    return e;
+  };
+  const total = consumido + extra;
+  const cab = el("div", "ppto-cab");
+  cab.append(el("span", "ppto-titulo", titulo));
+
+  if (meta <= 0) {
+    // Sin presupuesto: no hay qué medir, pero sí avisar que este gasto sale por fuera.
+    cab.append(el("span", "ppto-cifras", `${fmtCLP(consumido)} gastados`));
+    box.append(cab);
+    const sin = el("div", "ppto-texto ppto-alerta");
+    sin.textContent = extra > 0
+      ? `Sin presupuesto este mes: estos ${fmtCLP(extra)} irían fuera de presupuesto y bajan tu patrimonio.`
+      : "Sin presupuesto este mes.";
+    box.append(sin);
+    if (nota) box.append(el("div", "ppto-nota", nota));
+    box.hidden = false;
+    return;
+  }
+
+  cab.append(el("span", "ppto-cifras", `${fmtCLP(extra > 0 ? total : consumido)} de ${fmtCLP(meta)}`));
+  box.append(cab);
+
+  const escala = Math.max(meta, total, 1);
+  const pct = (v) => `${Math.max(0, (v / escala) * 100)}%`;
+  const verde = Math.min(consumido, meta);
+  const rojoPrevio = Math.max(0, consumido - meta); // ya estabas pasado antes de este gasto
+  const extraDentro = Math.min(extra, Math.max(0, meta - consumido));
+  const extraFuera = extra - extraDentro;
+  const queda = Math.max(0, meta - total);
+
+  const barra = el("div", "ppto-barra");
+  barra.setAttribute("role", "img");
+  const seg = (cls, v) => {
+    if (v <= 0) return;
+    const s = el("span", `ppto-seg ${cls}`);
+    s.style.width = pct(v);
+    barra.append(s);
+  };
+  seg("ppto-verde", verde);
+  seg("ppto-amarillo", extraDentro);
+  seg("ppto-gris", queda);
+  seg("ppto-rojo", rojoPrevio);
+  seg("ppto-rojo ppto-rayado", extraFuera);
+  if (total > meta) {
+    const marca = el("span", "ppto-marca");
+    marca.style.left = pct(meta);
+    barra.append(marca);
+  }
+  box.append(barra);
+
+  const texto = el("div", "ppto-texto");
+  if (total > meta) {
+    texto.classList.add("ppto-alerta");
+    texto.textContent = extra === 0
+      ? `Ya te pasaste por ${fmtCLP(total - meta)} del presupuesto.`
+      : consumido > meta
+        ? `Ya estabas ${fmtCLP(consumido - meta)} sobre el presupuesto; con este gasto quedas ${fmtCLP(total - meta)} sobre.`
+        : `Con este gasto te pasas por ${fmtCLP(total - meta)} del presupuesto.`;
+  } else if (extra > 0) {
+    texto.textContent = `Con este gasto llevas ${Math.round((total / meta) * 100)}% y te quedan ${fmtCLP(queda)}.`;
+  } else {
+    texto.textContent = `Llevas ${Math.round((consumido / meta) * 100)}% · te quedan ${fmtCLP(queda)}.`;
+  }
+  box.append(texto);
+
+  if (extra > 0) {
+    const leyenda = el("div", "ppto-leyenda");
+    for (const [cls, t] of [["ppto-verde", "ya gastado"], ["ppto-amarillo", "este gasto"], ["ppto-gris", "te queda"]]) {
+      const item = el("span", "ppto-item");
+      item.append(el("i", `ppto-punto ${cls}`), t);
+      leyenda.append(item);
+    }
+    box.append(leyenda);
+  }
+  if (nota) box.append(el("div", "ppto-nota", nota));
+  box.hidden = false;
+}
+
+/** Bajo Categoría y bajo Subcategoría: cuánto del presupuesto del mes llevas
+ * gastado y cómo queda con el monto que estás por guardar. Solo para Gastos. */
+function actualizarPresupuesto() {
+  const boxCat = $("pptoCat");
+  const boxSub = $("pptoSub");
+  boxCat.hidden = true;
+  boxSub.hidden = true;
+  if (!calculoListo || state.tipo !== "Gasto") return;
+
+  const fecha = $("fecha").value || todayISO();
+  const mes = fecha.slice(0, 7);
+  const [yy, mm] = mes.split("-").map(Number);
+  const nombreMes = `${MESES_CORTOS[mm] || mes} ${yy}`;
+
+  const catTipeada = $("categoria").value.trim();
+  if (!catTipeada) return;
+  const cat = canon ? canon.cat(catTipeada) : catTipeada;
+  if (!categoriaSubMap[cat]) {
+    // Categoría que no existe todavía: lo más probable es un typeo.
+    boxCat.hidden = false;
+    boxCat.replaceChildren();
+    const aviso = document.createElement("div");
+    aviso.className = "ppto-texto ppto-nota";
+    aviso.textContent = `"${catTipeada}" es una categoría nueva: no tiene historial ni presupuesto.`;
+    boxCat.append(aviso);
+    return;
+  }
+
+  // Lo que estás metiendo ahora, en pesos (en un medio USD, ya convertido).
+  const tipeado = Math.abs(Number($("monto").value)) || 0;
+  const extra = esMedioUSD($("medioPago").value)
+    ? (conversionUsdActual && conversionUsdActual.montoUsd === tipeado ? conversionUsdActual.montoClp : 0)
+    : tipeado;
+
+  const c = consumoPresupuesto(cat, undefined, mes);
+  pintarBarraPresupuesto(boxCat, { titulo: `${cat} · ${nombreMes}`, meta: c.meta, consumido: c.consumido, extra });
+
+  const subTipeada = $("subcategoria").value.trim();
+  if (!subTipeada) return;
+  const sub = canon ? canon.sub(cat, subTipeada) : subTipeada;
+  const existe = [...categoriaSubMap[cat]].some((s) => s.trim().toLowerCase() === sub.trim().toLowerCase());
+  if (!existe) {
+    boxSub.hidden = false;
+    boxSub.replaceChildren();
+    const aviso = document.createElement("div");
+    aviso.className = "ppto-texto ppto-nota";
+    aviso.textContent = `"${subTipeada}" es una subcategoría nueva en ${cat}: no tiene historial ni presupuesto.`;
+    boxSub.append(aviso);
+    return;
+  }
+  const s = consumoPresupuesto(cat, sub, mes);
+  pintarBarraPresupuesto(boxSub, {
+    titulo: `${sub} · ${nombreMes}`,
+    meta: s.meta,
+    consumido: s.consumido,
+    extra,
+    nota: s.conReembolso ? "Esta línea suele reembolsarse: su presupuesto es neto, así que el gasto se ve más grande hasta que llegue el reembolso." : "",
+  });
 }
 
 /** Datos a mano por subcategoría (pestaña "Datos" de la planilla: Subcategoria,
@@ -442,6 +612,7 @@ function resetFormForNextEntry() {
   $("montoLabel").textContent = "Monto";
   $("usdHint").hidden = true;
   conversionUsdActual = null;
+  actualizarPresupuesto();
   $("medioPago").focus();
 }
 
@@ -610,6 +781,7 @@ async function init() {
   $("fecha").value = todayISO();
   wireToggle("tipoToggle", "type", "tipo");
   $("tipoToggle").addEventListener("click", actualizarLabelEstado);
+  $("tipoToggle").addEventListener("click", actualizarPresupuesto);
   wireToggle("estadoToggle", "estado", "estado");
   $("estadoToggle").addEventListener("click", () => {
     estadoTocadoManualmente = true; // el usuario decidió — se deja de auto-elegir por el medio
@@ -621,13 +793,18 @@ async function init() {
     if (!$("vencSection").hidden) renderVencChips();
     renderUltimosMovimientos();
     actualizarUsdHint();
+    actualizarPresupuesto();
   });
   $("monto").addEventListener("input", actualizarUsdHint);
+  $("monto").addEventListener("input", actualizarPresupuesto);
   $("fecha").addEventListener("change", actualizarUsdHint);
-  $("categoria").addEventListener("change", updateSubcategorias);
-  $("categoria").addEventListener("input", updateSubcategorias);
-  $("subcategoria").addEventListener("input", mostrarDatoSub);
-  $("subcategoria").addEventListener("change", mostrarDatoSub);
+  $("fecha").addEventListener("change", actualizarPresupuesto);
+  for (const ev of ["input", "change"]) {
+    $("categoria").addEventListener(ev, updateSubcategorias);
+    $("categoria").addEventListener(ev, actualizarPresupuesto);
+    $("subcategoria").addEventListener(ev, mostrarDatoSub);
+    $("subcategoria").addEventListener(ev, actualizarPresupuesto);
+  }
   $("toggleCuota").addEventListener("click", () => {
     const section = $("cuotaSection");
     section.hidden = !section.hidden;
