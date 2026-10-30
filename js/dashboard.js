@@ -491,14 +491,19 @@ function sumaCobrarPronto(hilos, hoy, corte) {
   }, 0);
 }
 
-/** Cuánto FALTA por gastar (o entrar) del presupuesto del mes, sumando
- * categoría por categoría con piso en cero, más el detalle de lo que ya se pasó.
+/** Cuánto FALTA por gastar (o entrar) del presupuesto del mes, categoría por
+ * categoría con piso en cero, más el detalle de lo que ya se pasó.
  *
- * El piso en cero es la clave: si una categoría ya se pasó del presupuesto, lo
- * que falta de ella es CERO, nunca un número negativo que le devuelva plata a la
- * proyección. Esa plata ya salió y ya está descontada de la base. Sumar el total
- * global en vez de categoría por categoría hacía justo eso: un gasto sin
- * presupuesto (ej. un castigo incobrable) se compensaba solo y desaparecía. */
+ * Todo en NETO, igual que "Gasto por categoría": un reembolso o un por cobrar
+ * registrado en la misma categoría/subcategoría resta del gasto, y el presupuesto
+ * es lo que realmente piensas gastar (si pagas un almuerzo de $60.000 y te devuelven
+ * $45.000, gastaste $15.000). No se inventan reembolsos "esperados": lo que no está
+ * registrado no cuenta.
+ *
+ * Para el Gasto, `queda` es lo que de verdad queda del presupuesto del mes: lo que
+ * falta en las categorías menos lo que ya te pasaste (y lo que no tenía presupuesto),
+ * porque el presupuesto es un total y un exceso en una categoría se come lo que queda
+ * en las demás. Equivale a presupuesto total − gastado total, con piso en cero. */
 function faltaDelPresupuesto(tipo, mes) {
   const cats = new Set(categoriasForTipo(tipo, mes));
   for (const m of movimientos) {
@@ -506,71 +511,18 @@ function faltaDelPresupuesto(tipo, mes) {
   }
   let falta = 0;
   let excedido = 0;
-  let reembolsoPendiente = 0;
   const excesos = [];
   for (const cat of cats) {
-    const { meta, real, reembPendiente } = metaYRealParaProyectar(tipo, cat, mes);
+    const meta = budgetForCategoria(mes, cat, tipo) || 0;
+    const real = montoRealNeto(tipo, cat, mes);
     falta += Math.max(0, meta - real);
-    reembolsoPendiente += reembPendiente;
     if (real > meta) {
       excedido += real - meta;
       excesos.push({ cat, meta, real, exceso: real - meta });
     }
   }
   excesos.sort((a, b) => b.exceso - a.exceso);
-  return { falta, excedido, excesos, reembolsoPendiente };
-}
-
-/** Presupuesto y real de una categoría para PROYECTAR el mes, con las parejas
- * gasto/reembolso medidas en BRUTO en vez de en neto.
- *
- * Por qué: el presupuesto de una subcategoría con reembolso está guardado NETO
- * (ej. Pago Prestamo: $460.346 que pagas − $233.000 que te devuelven = $227.346),
- * pero la plata se mueve BRUTA y las dos patas caen en días distintos. Comparando
- * neto contra neto, el mes en que el reembolso ya entró pero el gasto todavía no
- * se pagó quedaba reservando solo el neto: los $233.000 que ya habían entrado se
- * leían como plata libre y la liquidez quedaba inflada en ese monto hasta que se
- * registraba el pago, momento en que "caía" sola. Lo mismo al revés (gasto pagado
- * y reembolso aún no recibido) la dejaba deflactada.
- *
- * Por eso acá la meta de una pareja es el bruto (neto + lo que se espera que
- * vuelva) y lo que falta que vuelva se devuelve aparte, como entrada pendiente:
- * mientras no se pague, se reserva el bruto completo; cuando el reembolso todavía
- * no llegó, se proyecta su entrada. Así la liquidez no se mueve por el ORDEN en
- * que caen las dos patas, que es justamente lo que no debe moverla. */
-function metaYRealParaProyectar(tipo, cat, mes) {
-  if (tipo !== "Gasto") {
-    return { meta: budgetForCategoria(mes, cat, tipo) || 0, real: montoRealNeto(tipo, cat, mes), reembPendiente: 0 };
-  }
-  const subs = new Set(subcategoriasConPresupuesto(mes, cat, "Gasto").map(normSub));
-  const repr = new Map(subcategoriasConPresupuesto(mes, cat, "Gasto").map((s) => [normSub(s), s]));
-  for (const m of movimientos) {
-    if (m.tipo === "Gasto" && m.categoria === cat && monthKey(m) === mes && !esFilaAparte(m.fila)) {
-      const n = normSub(m.subcategoria);
-      if (!subs.has(n)) { subs.add(n); repr.set(n, m.subcategoria || ""); }
-    }
-  }
-  let meta = 0;
-  let real = 0;
-  let reembPendiente = 0;
-  for (const n of subs) {
-    const sub = repr.get(n);
-    const metaNeta = budgetForSubcategoria(mes, cat, sub, "Gasto");
-    const bd = gastoMonthlyBreakdown(cat, sub, mes, mes);
-    const info = reembolsoInfoFor(cat, sub, mes);
-    if (!info) {
-      meta += metaNeta;
-      real += bd.neto;
-      continue;
-    }
-    // Lo que se espera que vuelva: el promedio histórico, o lo que ya volvió
-    // este mes si fue más (un reembolso mayor al habitual ya está en la plata).
-    const esperado = Math.max(info.montoAvg, bd.reembolso);
-    meta += metaNeta + esperado;
-    real += bd.bruto;
-    reembPendiente += Math.max(0, esperado - bd.reembolso);
-  }
-  return { meta, real, reembPendiente };
+  return { falta, excedido, excesos, queda: Math.max(0, falta - excedido) };
 }
 
 /** La ficha "Fuera de presupuesto": lo gastado este mes por sobre el
@@ -607,8 +559,8 @@ function renderFueraPresupuesto(gasto, proyecta, nombreMes) {
   chip.className = "macro-chip macro-chip-over";
   chip.textContent = `${gasto.excesos.length} categoría${gasto.excesos.length === 1 ? "" : "s"}`;
   pie.innerHTML = sinPpto.length
-    ? `<strong>${sinPpto.length}</strong> sin presupuesto · esta plata ya salió`
-    : "Esta plata ya salió y no vuelve a la proyección";
+    ? `<strong>${sinPpto.length}</strong> sin presupuesto · ya salió de tu plata`
+    : "Se descuenta de lo que te queda por gastar";
 
   const resumen =
     `${gasto.excesos.length} categoría${gasto.excesos.length === 1 ? "" : "s"} por sobre lo presupuestado` +
@@ -623,7 +575,7 @@ function renderFueraPresupuesto(gasto, proyecta, nombreMes) {
 
   detalle.innerHTML =
     `<div style="font-size:11.5px;color:var(--text-muted);margin:10px 0 4px;line-height:1.5;">
-       ${resumen}. Esta plata ya salió y no vuelve a la proyección.
+       ${resumen}. Esa plata ya salió y se descuenta de lo que te queda por gastar del presupuesto.
      </div>` +
     grandes
       .map((e) => {
@@ -697,12 +649,13 @@ function renderIndicadores(selectedKey, d) {
   const esPasado = selectedKey < mesActual();
   const esFuturo = selectedKey > mesActual();
   const proyecta = hayPpto && !esPasado && !esFuturo;
-  // Lo que todavía tiene que ENTRAR: los ingresos presupuestados que faltan, más
-  // los reembolsos de gastos ya pagados que aún no vuelven (ver
-  // metaYRealParaProyectar: su gasto se reservó bruto, así que la vuelta tiene
-  // que proyectarse o el mes queda descontado dos veces).
-  const faltaEntrar = ingreso.falta + gasto.reembolsoPendiente;
-  const ajuste = proyecta ? faltaEntrar - gasto.falta : 0;
+  // Lo que todavía tiene que ENTRAR: los ingresos presupuestados que faltan. Lo que
+  // todavía tiene que SALIR: lo que queda del presupuesto de gastos, ya restado lo
+  // que te pasaste (ver faltaDelPresupuesto). Sin reembolsos "esperados": un
+  // reembolso cuenta cuando lo registras, como por cobrar o como ingreso.
+  const faltaEntrar = ingreso.falta;
+  const quedaGastar = gasto.queda;
+  const ajuste = proyecta ? faltaEntrar - quedaGastar : 0;
   const nota = esFuturo ? "Mes futuro" : esPasado ? `${nombreMes} ya pasó` : !hayPpto ? "Sin presupuesto para este mes" : "";
 
   renderFueraPresupuesto(gasto, proyecta, nombreMes);
@@ -752,10 +705,11 @@ function renderIndicadores(selectedKey, d) {
   // Textos del "?": cortos y en chileno. Cada uno se lee como la fórmula dicha
   // en voz alta, con los montos del mes que estás mirando.
   const fraseMes = proyecta
-    ? `Después le descuentas lo que te falta gastar del presupuesto (${fmtCLP(gasto.falta)}) y le sumas lo ` +
+    ? `Después le descuentas lo que te queda por gastar del presupuesto (${fmtCLP(quedaGastar)}) y le sumas lo ` +
       `que falta entrar (${fmtCLP(faltaEntrar)}).` +
       (gasto.excedido > 0
-        ? ` Los ${fmtCLP(gasto.excedido)} que ya gastaste por sobre el presupuesto no se devuelven: esa plata ya salió.`
+        ? ` Esos ${fmtCLP(quedaGastar)} son lo que falta en las categorías (${fmtCLP(gasto.falta)}) menos los ` +
+          `${fmtCLP(gasto.excedido)} que ya te pasaste o no tenían presupuesto: un exceso se come lo que queda en las demás.`
         : "")
     : `${nota}, así que no se proyecta nada.`;
 
@@ -1111,14 +1065,14 @@ function avisoPresupuesto(categoria, monto) {
   const meta = budgetForCategoria(mes, categoria, "Gasto") || 0;
   const real = montoRealNeto("Gasto", categoria, mes);
   if (meta <= 0) {
-    return `OJO: "${categoria}" no tiene presupuesto este mes, así que estos ${fmtCLP(monto)} van a bajar tu patrimonio.`;
+    return `OJO: "${categoria}" no tiene presupuesto este mes, así que estos ${fmtCLP(monto)} van por fuera del presupuesto y se descuentan de lo que te queda por gastar del mes.`;
   }
   const holgura = meta - real;
   if (holgura >= monto) {
     return `"${categoria}" tiene ${fmtCLP(holgura)} disponibles del presupuesto, así que esto ya estaba contemplado y no te mueve la proyección.`;
   }
   const exceso = monto - Math.max(0, holgura);
-  return `OJO: a "${categoria}" le quedan ${fmtCLP(Math.max(0, holgura))} de presupuesto, así que ${fmtCLP(exceso)} van por sobre lo presupuestado y bajan tu patrimonio.`;
+  return `OJO: a "${categoria}" le quedan ${fmtCLP(Math.max(0, holgura))} de presupuesto, así que ${fmtCLP(exceso)} van por sobre lo presupuestado y se descuentan de lo que te queda por gastar del mes.`;
 }
 
 /** Monta el formulario abono/castigo (las dos pestañas) dentro de `container`,

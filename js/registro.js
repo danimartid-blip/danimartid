@@ -244,7 +244,7 @@ function pintarBarraPresupuesto(box, { titulo, meta, consumido, extra, nota }) {
     box.append(cab);
     const sin = el("div", "ppto-texto ppto-alerta");
     sin.textContent = extra > 0
-      ? `Sin presupuesto este mes: estos ${fmtCLP(extra)} irían fuera de presupuesto y bajan tu patrimonio.`
+      ? `Sin presupuesto este mes: estos ${fmtCLP(extra)} irían fuera de presupuesto y se descuentan de lo que te queda por gastar del mes.`
       : "Sin presupuesto este mes.";
     box.append(sin);
     if (nota) box.append(el("div", "ppto-nota", nota));
