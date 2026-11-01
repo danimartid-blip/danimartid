@@ -514,7 +514,9 @@ function faltaDelPresupuesto(tipo, mes) {
   const excesos = [];
   for (const cat of cats) {
     const meta = budgetForCategoria(mes, cat, tipo) || 0;
-    const real = montoRealNeto(tipo, cat, mes);
+    // Un reembolso ya recibido cuyo gasto aún no se registra (dividendo, préstamo)
+    // baja el "real" bajo cero: la plata ya entró y el gasto bruto todavía sale.
+    const real = montoRealNeto(tipo, cat, mes) - (tipo === "Gasto" ? reembolsoSinGastoAun(cat, mes) : 0);
     falta += Math.max(0, meta - real);
     if (real > meta) {
       excedido += real - meta;

@@ -174,6 +174,36 @@ function montoRealNeto(tipo, categoria, mes, subcategoria, anchorMes = mes) {
   return total;
 }
 
+/** Reembolsos de un Gasto que YA llegaron este mes sin que el Gasto se haya
+ * registrado todavía (ej. el 1° te pagan $500.000 por el dividendo, pero el
+ * dividendo de $880.000 lo pagas el 10). montoRealNeto los ignora a propósito
+ * —sin un Gasto al que netear, un Ingreso suelto no es "gasto negativo" (así se
+ * rompió Sueldo)— pero para PROYECTAR el mes sí importan: esa plata ya está en tus
+ * cuentas, y el Gasto que viene sale ENTERO. Descontar solo el neto (880 − 500)
+ * contaba el reembolso dos veces y inflaba la Liquidez y el Patrimonio proyectados.
+ * Solo cuenta Ingresos validados como reembolso (esMovReembolso), igual que el
+ * neteo normal. */
+function reembolsoSinGastoAun(categoria, mes, anchorMes = mes) {
+  const ventana = [...monthsBeforeExclusive(anchorMes, 3), anchorMes];
+  const gastoBucket = singleBucket(categoria, ventana, "Gasto");
+  const objetivos = new Set();
+  for (const m of movimientos) {
+    if (m.tipo !== "Ingreso" || m.categoria !== categoria || monthKey(m) !== mes || esFilaAparte(m.fila)) continue;
+    if (!esMovReembolso(m, anchorMes)) continue;
+    const exacto = movimientos.some(
+      (g) => g.tipo === "Gasto" && g.categoria === categoria && normSub(g.subcategoria) === normSub(m.subcategoria) && ventana.includes(monthKey(g))
+    );
+    objetivos.add(exacto ? normSub(m.subcategoria) : gastoBucket);
+  }
+  let total = 0;
+  for (const sub of objetivos) {
+    if (sub === null) continue;
+    const b = gastoMonthlyBreakdown(categoria, sub, mes, anchorMes);
+    if (b.bruto === 0) total += b.reembolso;
+  }
+  return total;
+}
+
 /** anchorMes: mismo motivo que en gastoMonthlyBreakdown — la ventana que decide
  * si la categoría "es de a par" queda fija en el mes presupuestado, no en cada
  * uno de los 3 meses históricos que se están promediando. */
