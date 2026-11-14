@@ -453,6 +453,7 @@ function renderStats(selectedKey) {
     cobrarTotal: sumaCobrarHilos(hilos),
     cobrarPronto: sumaCobrarPronto(hilos, hoy, cutoffPronto),
   });
+  renderRitmo(selectedKey);
   renderConciliacion(selectedKey);
   renderPorPagar(deuda);
   renderPorCobrar(hilos, deuda.filter((m) => m.tipo === "Ingreso"));
@@ -751,6 +752,58 @@ function renderIndicadores(selectedKey, d) {
         "supone que gastas todo lo que queda del presupuesto antes de fin de mes. Tu patrimonio real de hoy, " +
         `sin proyectar, es ${fmtCLP(basePatrimonio)}.`
       : fraseMes);
+}
+
+/** Ritmo del mes: ¿vas gastando más o menos de lo esperado a esta altura? Compara
+ * lo gastado hasta hoy con lo que, según el presupuesto y tu forma habitual de
+ * gastar cada categoría, deberías llevar (ver ritmoDelMes en calculo.js). En un mes
+ * pasado muestra cómo cerró contra el presupuesto; en uno futuro no se muestra. */
+function renderRitmo(selectedKey) {
+  const card = $("ritmoCard");
+  const hoyMes = mesActual();
+  if (selectedKey > hoyMes || totalBudgetForTipo("Gasto", selectedKey) <= 0) {
+    card.hidden = true;
+    return;
+  }
+  const enCurso = selectedKey === hoyMes;
+  const r = ritmoDelMes(selectedKey, enCurso ? new Date().getDate() : diasDelMes(selectedKey));
+  const [y, mo] = selectedKey.split("-");
+  const nombreMes = `${MESES[Number(mo)]} ${y}`;
+
+  // Dentro de lo esperado = verde; hasta un 5% del presupuesto por sobre = amarillo
+  // (vas justo); más que eso = rojo.
+  const sobre = r.diferencia > 0;
+  const estado = !sobre ? "ok" : r.diferencia <= r.meta * 0.05 ? "justo" : "pasado";
+  const monto = fmtCLP(Math.abs(r.diferencia));
+  const referencia = enCurso ? "lo esperado" : "el presupuesto";
+  $("ritmoTitulo").textContent = enCurso ? `Ritmo del mes · día ${r.dia} de ${r.diasMes}` : `Cómo cerró ${nombreMes}`;
+  $("ritmoNum").textContent = `${enCurso ? "Vas" : "Cerraste"} ${monto} ${sobre ? "sobre" : "bajo"} ${referencia}`;
+  card.className = `card ritmo ritmo-${estado}`;
+
+  // Barra: el ancho completo es el presupuesto del mes; el relleno, lo gastado; la
+  // marca, dónde deberías ir hoy.
+  const pct = (n) => `${Math.max(0, Math.min(100, (n / r.meta) * 100)).toFixed(1)}%`;
+  $("ritmoReal").style.width = pct(r.real);
+  $("ritmoMarca").style.left = pct(r.esperado);
+  $("ritmoMarca").hidden = !enCurso;
+  $("ritmoPie").textContent = enCurso
+    ? `Llevas ${fmtCLP(r.real)} · a esta altura lo normal era ${fmtCLP(r.esperado)} · presupuesto ${fmtCLP(r.meta)}`
+    : `Gastaste ${fmtCLP(r.real)} de ${fmtCLP(r.meta)} presupuestados`;
+
+  // El "?": la fórmula dicha en voz alta y las categorías que más explican la diferencia.
+  const linea = (c) => `${c.cat} (${c.diferencia > 0 ? "+" : "−"}${fmtCLP(Math.abs(c.diferencia))})`;
+  const mas = r.porCategoria.filter((c) => c.diferencia >= 1000).slice(0, 3);
+  const menos = r.porCategoria.filter((c) => c.diferencia <= -1000).slice(0, 3);
+  $("infoRitmo").textContent =
+    (enCurso
+      ? `Lo esperado no es el presupuesto dividido por los días: cada categoría se reparte según cómo la ` +
+        `gastaste los últimos 3 meses. Lo que pagas a principio de mes (dividendo, diezmo) ya se espera entero; ` +
+        `lo que se reparte (supermercado, comidas) se espera a medias. A hoy suma ${fmtCLP(r.esperado)} y ` +
+        `llevas ${fmtCLP(r.real)}, neto de reembolsos como en "Gasto por categoría". `
+      : `Lo gastado en ${nombreMes}, neto de reembolsos, contra el presupuesto completo del mes. `) +
+    (mas.length ? `Más de lo esperado: ${mas.map(linea).join(", ")}. ` : "") +
+    (menos.length ? `Menos: ${menos.map(linea).join(", ")}.` : "");
+  card.hidden = false;
 }
 
 /** Lo que se debe, guardado entre renderPorPagar y renderPorCobrar para poder

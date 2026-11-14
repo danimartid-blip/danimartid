@@ -1375,3 +1375,18 @@ nav.tabbar a { font-size: 9px; padding-left: 1px; padding-right: 1px; }
 .ppto-item { display: inline-flex; align-items: center; gap: 5px; }
 .ppto-punto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
 .ppto-punto.ppto-gris { background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--border-strong); }
+
+/* ---------- Ritmo del mes ---------- */
+.ritmo { border-left: 4px solid var(--good); }
+.ritmo-justo { border-left-color: var(--warning); }
+.ritmo-pasado { border-left-color: var(--critical); }
+.ritmo-num { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin: 6px 0 10px; color: var(--income); }
+.ritmo-justo .ritmo-num { color: color-mix(in srgb, var(--warning) 70%, var(--text)); }
+.ritmo-pasado .ritmo-num { color: var(--critical); }
+.ritmo-barra { position: relative; height: 10px; border-radius: var(--radius-pill); background: var(--surface-3); }
+.ritmo-real { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--good); transition: width .5s var(--ease); }
+.ritmo-justo .ritmo-real { background: var(--warning); }
+.ritmo-pasado .ritmo-real { background: var(--critical); }
+.ritmo-marca { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--text); }
+.ritmo-marca[hidden] { display: none; }
+.ritmo-pie { font-size: 12px; color: var(--text-muted); margin-top: 8px; line-height: 1.45; }

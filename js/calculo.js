@@ -712,3 +712,79 @@ function patrimonioAlCierre(mes) {
   }
   return total;
 }
+
+/** Día del mes (1-31) de un movimiento, o null. Las fechas nuevas son "AAAA-MM-DD";
+ * las migradas, "D/M/AAAA". El mes no se saca de acá sino de monthKey (Año/Mes). */
+function diaDelMes(m) {
+  const f = String(m.fecha ?? "").trim();
+  const iso = f.match(/^\d{4}-\d{1,2}-(\d{1,2})/);
+  if (iso) return Number(iso[1]);
+  const dmy = f.match(/^(\d{1,2})[/-]\d{1,2}[/-]\d{4}/);
+  return dmy ? Number(dmy[1]) : null;
+}
+
+const diasDelMes = (mes) => {
+  const [y, mo] = mes.split("-").map(Number);
+  return new Date(y, mo, 0).getDate();
+};
+
+/** Qué parte de su gasto del mes suele llevar una categoría a esta altura del mes,
+ * según los 3 meses anteriores (0 a 1). Así lo "esperado" respeta CUÁNDO gastas:
+ * el dividendo o el diezmo salen a principio de mes y ya se esperan enteros el día
+ * 14; el supermercado se reparte y se espera a medias. Se mide en bruto (solo
+ * importa la forma de la curva, no el monto) y en proporción del mes, para que un
+ * mes de 31 días y uno de 30 se comparen igual. Sin historia, se reparte parejo. */
+function fraccionHabitual(categoria, mes, dia) {
+  const avance = dia / diasDelMes(mes);
+  const fracciones = [];
+  for (const mk of monthsBeforeExclusive(mes, 3)) {
+    const largo = diasDelMes(mk);
+    let total = 0;
+    let hasta = 0;
+    for (const m of movimientos) {
+      if (m.tipo !== "Gasto" || m.categoria !== categoria || monthKey(m) !== mk || esFilaAparte(m.fila)) continue;
+      const d = diaDelMes(m);
+      total += Math.abs(m.monto);
+      if (d == null || d / largo <= avance) hasta += Math.abs(m.monto);
+    }
+    if (total > 0) fracciones.push(hasta / total);
+  }
+  return fracciones.length ? fracciones.reduce((a, b) => a + b, 0) / fracciones.length : avance;
+}
+
+/** Ritmo del mes: lo que llevas gastado hasta el día `dia` contra lo que, según tu
+ * presupuesto y tu forma habitual de gastar, deberías llevar a esta altura.
+ *   esperado = Σ por categoría de presupuesto × fraccionHabitual
+ *   real     = gasto real del mes hasta ese día, con las mismas reglas de
+ *              "Gasto por categoría" (neto de reembolsos, sin contra-asientos ni
+ *              traspasos con el ahorro). Lo que no tenía presupuesto cuenta entero.
+ * diferencia > 0 = vas gastando más de lo esperado. Con `dia` = último día del mes
+ * lo esperado es el presupuesto completo, o sea el resultado del mes cerrado.
+ *
+ * Los movimientos del mes con fecha posterior a `dia` (una cuota ya cargada, algo
+ * anotado por adelantado) se dejan fuera mientras se calcula: todavía no ocurren. */
+function ritmoDelMes(mes, dia) {
+  const todos = movimientos;
+  movimientos = todos.filter((m) => monthKey(m) !== mes || (diaDelMes(m) ?? 0) <= dia);
+  try {
+    const cats = new Set(categoriasForTipo("Gasto", mes));
+    for (const m of movimientos) {
+      if (m.tipo === "Gasto" && monthKey(m) === mes && !esFilaAparte(m.fila)) cats.add(m.categoria);
+    }
+    const porCategoria = [];
+    for (const cat of cats) {
+      const meta = budgetForCategoria(mes, cat, "Gasto") || 0;
+      const esperado = meta * fraccionHabitual(cat, mes, dia);
+      const real = montoRealNeto("Gasto", cat, mes);
+      if (meta === 0 && real === 0) continue;
+      porCategoria.push({ cat, meta, esperado, real, diferencia: real - esperado });
+    }
+    porCategoria.sort((a, b) => Math.abs(b.diferencia) - Math.abs(a.diferencia));
+    const suma = (k) => porCategoria.reduce((s, c) => s + c[k], 0);
+    const esperado = suma("esperado");
+    const real = suma("real");
+    return { dia, diasMes: diasDelMes(mes), meta: suma("meta"), esperado, real, diferencia: real - esperado, porCategoria };
+  } finally {
+    movimientos = todos;
+  }
+}

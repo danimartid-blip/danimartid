@@ -8,8 +8,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202611010006">
-<script src="js/inicio.js?v=202611010006"></script>
+<link rel="stylesheet" href="css/styles.css?v=202611141110">
+<script src="js/inicio.js?v=202611141110"></script>
 </head>
 <body>
 
@@ -55,6 +55,20 @@
       <p class="hero-info" id="infoLiquidez" hidden></p>
       <p class="hero-info" id="infoPatrimonio" hidden></p>
       <p class="hero-info" id="infoSaldo" hidden></p>
+    </div>
+
+    <div class="card ritmo" id="ritmoCard" hidden>
+      <div class="hero-head">
+        <span class="stat-label" id="ritmoTitulo">Ritmo del mes</span>
+        <button type="button" class="info-btn" data-info="infoRitmo" aria-label="Cómo se calcula el ritmo del mes">?</button>
+      </div>
+      <div class="ritmo-num" id="ritmoNum"></div>
+      <div class="ritmo-barra" aria-hidden="true">
+        <span class="ritmo-real" id="ritmoReal"></span>
+        <span class="ritmo-marca" id="ritmoMarca"></span>
+      </div>
+      <div class="ritmo-pie" id="ritmoPie"></div>
+      <p class="hero-info" id="infoRitmo" hidden></p>
     </div>
 
     <div class="card" id="conciliacionCard">
@@ -181,11 +195,11 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202611010006"></script>
+<script src="js/config.js?v=202611141110"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202611010006"></script>
-<script src="js/anim.js?v=202611010006"></script>
-<script src="js/calculo.js?v=202611010006"></script>
-<script src="js/dashboard.js?v=202611010006"></script>
+<script src="js/sheets-auth.js?v=202611141110"></script>
+<script src="js/anim.js?v=202611141110"></script>
+<script src="js/calculo.js?v=202611141110"></script>
+<script src="js/dashboard.js?v=202611141110"></script>
 </body>
 </html>
