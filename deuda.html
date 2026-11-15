@@ -8,11 +8,14 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="css/styles.css?v=202611141945">
-<script src="js/inicio.js?v=202611141945"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap">
+<link rel="stylesheet" href="css/styles.css?v=202611142309">
+<script src="js/inicio.js?v=202611142309"></script>
 </head>
 <body>
-<script src="js/pin.js?v=202611141945" data-app="finanzas" data-token="gsheets_token"></script>
+<script src="js/pin.js?v=202611142309" data-app="finanzas" data-token="gsheets_token"></script>
 
 <header class="topbar">
   <h1>Deuda</h1>
@@ -32,6 +35,15 @@
   </div>
 
   <div id="content" hidden>
+
+    <!-- Tres vistas de la misma deuda: lo que debes, cómo mejorarla y el auto. -->
+    <div class="subtabs" role="tablist" id="subtabs">
+      <button type="button" role="tab" data-tab="financiera" aria-selected="true">Deuda financiera</button>
+      <button type="button" role="tab" data-tab="soluciones" aria-selected="false">Soluciones</button>
+      <button type="button" role="tab" data-tab="vehiculo" aria-selected="false">Vehículo</button>
+    </div>
+
+    <div class="subtab-panel" id="panel-financiera" role="tabpanel">
 
     <div class="card card-hero">
       <div class="hero-grid" id="heroGrid">
@@ -67,8 +79,15 @@
       <div id="cargaBody"></div>
     </div>
 
+    </div><!-- /panel-financiera -->
+
+    <div class="subtab-panel" id="panel-soluciones" role="tabpanel" hidden></div>
+    <div class="subtab-panel" id="panel-vehiculo" role="tabpanel" hidden></div>
+
   </div>
 </div>
+
+<div class="toast" id="toast"></div>
 
 <nav class="tabbar">
   <a href="index.html">
@@ -97,10 +116,12 @@
   </a>
 </nav>
 
-<script src="js/config.js?v=202611141945"></script>
+<script src="js/config.js?v=202611142309"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="js/sheets-auth.js?v=202611141945"></script>
-<script src="js/anim.js?v=202611141945"></script>
-<script src="js/deuda.js?v=202611141945"></script>
+<script src="js/sheets-auth.js?v=202611142309"></script>
+<script src="js/anim.js?v=202611142309"></script>
+<script src="js/deuda.js?v=202611142309"></script>
+<script src="js/deuda-soluciones.js?v=202611142309"></script>
+<script src="js/deuda-vehiculo.js?v=202611142309"></script>
 </body>
 </html>

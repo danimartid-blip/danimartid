@@ -8,26 +8,30 @@
 :root {
   color-scheme: light;
 
-  /* superficies — papel cálido, no blanco clínico */
-  --bg: #f5f5f1;
+  /* superficies — papel apenas cálido, no blanco clínico */
+  --bg: #f3f4f0;
   --pin-fondo: #0b4f45;
   --pin-acento: #ffffff;
   --surface: #ffffff;
-  --surface-2: #f0efea;
-  --surface-3: #e7e6df;
-  --border: rgba(23, 22, 17, 0.07);
-  --border-strong: rgba(23, 22, 17, 0.13);
-  --grid: #e6e5dd;
+  --surface-2: #f2f3ef;
+  --surface-3: #e6e8e2;
+  --border: rgba(17, 26, 22, 0.06);
+  --border-strong: rgba(17, 26, 22, 0.12);
+  --grid: #e9ebe5;
 
   /* tinta */
-  --text: #17160f;
-  --text-secondary: #55534a;
-  --text-muted: #8a887d;
+  --text: #111715;
+  --text-secondary: #4c5652;
+  --text-muted: #87908c;
 
   /* marca */
   --accent: #0e7c6b;
   --accent-soft: rgba(14, 124, 107, 0.10);
   --accent-ink: #0a5c4f;
+  /* la ficha principal (hero) y el logo: el verde de la marca en degradé */
+  --hero-1: #0a4f45;
+  --hero-2: #0e7c6b;
+  --hero-3: #18a58a;
 
   /* datos — paleta validada (no modificar) */
   --series-1: #2a78d6;
@@ -48,33 +52,36 @@
   --serious: #ec835a;
   --critical: #d03b3b;
 
-  --radius: 16px;
-  --radius-sm: 11px;
+  --radius: 20px;
+  --radius-sm: 13px;
   --radius-pill: 999px;
 
-  --shadow-sm: 0 1px 2px rgba(23, 22, 17, 0.05);
-  --shadow: 0 1px 2px rgba(23, 22, 17, 0.04), 0 6px 16px -6px rgba(23, 22, 17, 0.10);
-  --shadow-lg: 0 2px 4px rgba(23, 22, 17, 0.05), 0 14px 32px -10px rgba(23, 22, 17, 0.18);
+  --shadow-sm: 0 1px 2px rgba(17, 26, 22, 0.05);
+  --shadow: 0 1px 1px rgba(17, 26, 22, 0.03), 0 10px 26px -14px rgba(17, 26, 22, 0.16);
+  --shadow-lg: 0 2px 4px rgba(17, 26, 22, 0.05), 0 18px 38px -14px rgba(17, 26, 22, 0.22);
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
 
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #0e0e0c;
-    --surface: #181815;
-    --surface-2: #201f1c;
-    --surface-3: #2a2925;
+    --bg: #0b0f0e;
+    --surface: #141a18;
+    --surface-2: #1b2320;
+    --surface-3: #27312d;
     --border: rgba(255, 255, 255, 0.07);
     --border-strong: rgba(255, 255, 255, 0.14);
-    --grid: #2b2a26;
+    --grid: #232c29;
 
-    --text: #f4f3ee;
-    --text-secondary: #b6b4a8;
-    --text-muted: #85837a;
+    --text: #f1f5f3;
+    --text-secondary: #b3bdb8;
+    --text-muted: #7f8a85;
+    --hero-1: #06342e;
+    --hero-2: #0a5548;
+    --hero-3: #0f7868;
 
     --accent: #3fc9ae;
     --accent-soft: rgba(63, 201, 174, 0.12);
@@ -100,9 +107,10 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0e0e0c; --surface: #181815; --surface-2: #201f1c; --surface-3: #2a2925;
-  --border: rgba(255,255,255,0.07); --border-strong: rgba(255,255,255,0.14); --grid: #2b2a26;
-  --text: #f4f3ee; --text-secondary: #b6b4a8; --text-muted: #85837a;
+  --bg: #0b0f0e; --surface: #141a18; --surface-2: #1b2320; --surface-3: #27312d;
+  --border: rgba(255,255,255,0.07); --border-strong: rgba(255,255,255,0.14); --grid: #232c29;
+  --text: #f1f5f3; --text-secondary: #b3bdb8; --text-muted: #7f8a85;
+  --hero-1: #06342e; --hero-2: #0a5548; --hero-3: #0f7868;
   --accent: #3fc9ae; --accent-soft: rgba(63,201,174,0.12); --accent-ink: #7fe0cc;
   --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
   --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
@@ -116,10 +124,13 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  /* un lavado del verde de la marca arriba, que se disuelve en el papel */
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 11%, var(--bg)) 0, var(--bg) 300px) no-repeat,
+    var(--bg);
   color: var(--text);
   min-height: 100vh;
-  padding-bottom: 96px;
+  padding-bottom: 104px;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -132,10 +143,10 @@ header.topbar {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: blur(14px) saturate(1.4);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
-  padding: 14px 16px 12px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(16px) saturate(1.5);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  padding: 13px 16px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -144,11 +155,34 @@ header.topbar {
   margin: 0 auto;
 }
 header.topbar h1 {
-  font-size: 20px;
+  font-size: 21px;
   margin: 0;
-  font-weight: 760;
-  letter-spacing: -0.02em;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
+/* la marca: el mismo cuadradito verde en todas las páginas */
+header.topbar h1::before {
+  content: "";
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 15.5l4.5-5 3.5 3L19 7'/%3E%3Cpath d='M14.5 7H19v4.5'/%3E%3C/svg%3E") center / 18px no-repeat,
+    linear-gradient(145deg, var(--hero-2), var(--hero-3));
+  box-shadow: 0 5px 12px -5px color-mix(in srgb, var(--hero-2) 80%, transparent);
+}
+
+/* Presupuesto: el selector de mes nativo es ancho ("noviembre de 2026" + ícono),
+ * así que ahí el título y la marca se achican para que entren los dos. */
+header.topbar h1 { white-space: nowrap; }
+header.topbar:has(input[type="month"]) h1 { font-size: 18px; gap: 8px; }
+header.topbar:has(input[type="month"]) h1::before { width: 26px; height: 26px; border-radius: 9px; background-size: 16px, auto; }
+header.topbar input[type="month"] { font-size: 12.5px; padding: 8px 10px; min-width: 0; }
 
 /* ---------- cards ---------- */
 
@@ -161,11 +195,11 @@ header.topbar h1 {
   margin-bottom: 12px;
 }
 .card-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: .07em;
+  font-size: 15px;
+  font-weight: 750;
+  color: var(--text);
+  letter-spacing: -0.015em;
+  line-height: 1.25;
   margin: 0 0 14px;
 }
 
@@ -176,31 +210,39 @@ header.topbar h1 {
 
 .stat-value {
   font-size: 24px;
-  font-weight: 760;
+  font-weight: 780;
   line-height: 1.15;
   letter-spacing: -0.025em;
   font-variant-numeric: tabular-nums;
 }
 .stat-label {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--text-muted);
   margin-bottom: 6px;
   font-weight: 700;
-  letter-spacing: .05em;
+  letter-spacing: .06em;
   text-transform: uppercase;
 }
 .income { color: var(--income); }
 .expense { color: var(--expense); }
 
-/* hero (liquidez + patrimonio líquido). Alineado a la izquierda y ocupando
- * todo el ancho: antes iba todo centrado y los costados quedaban vacíos. */
+/* hero (liquidez + patrimonio líquido + saldo). Es la ficha que se mira primero:
+ * va como una tarjeta de banco, en el verde de la marca, con los tres números en
+ * blanco sobre paneles de vidrio. Un negativo se pinta coral (el rojo normal no
+ * se lee sobre verde). */
 .card-hero {
+  position: relative;
+  overflow: hidden;
   padding: 12px;
+  color: #fff;
+  border: none;
   background:
-    radial-gradient(130% 110% at 0% 0%, var(--accent-soft) 0%, transparent 60%),
-    var(--surface);
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-lg);
+    radial-gradient(120% 95% at 100% 0%, rgba(255, 255, 255, 0.20) 0%, transparent 55%),
+    radial-gradient(90% 85% at 0% 100%, rgba(0, 0, 0, 0.20) 0%, transparent 60%),
+    linear-gradient(150deg, var(--hero-1) 0%, var(--hero-2) 52%, var(--hero-3) 100%);
+  box-shadow:
+    0 20px 40px -20px color-mix(in srgb, var(--hero-1) 85%, transparent),
+    0 2px 6px color-mix(in srgb, var(--hero-1) 20%, transparent);
 }
 /* Grilla de la ficha: Liquidez y Patrimonio líquido arriba (mismo tamaño,
  * lado a lado) y Saldo actual abajo ocupando el ancho de los dos. Los montos
@@ -211,35 +253,51 @@ header.topbar h1 {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
-/* Cada indicador con su propio tinte, para que se distingan de un vistazo y
- * la ficha (la más importante del tablero) no sea tres cajas grises iguales. */
 .hero-box {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
+  align-items: flex-start;
+  text-align: left;
   min-width: 0;
-  padding: 14px 8px 15px;
-  border-radius: 14px;
-  background:
-    linear-gradient(158deg, color-mix(in srgb, var(--box-tint) 20%, var(--surface-2)) 0%, var(--surface-2) 72%);
-  border: 1px solid color-mix(in srgb, var(--box-tint) 24%, transparent);
+  padding: 13px 11px 14px;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.11);
+  border: 1px solid rgba(255, 255, 255, 0.13);
 }
-.hero-box-liquidez { --box-tint: var(--accent); }
-.hero-box-patrimonio { --box-tint: var(--series-1); }
-.hero-box-saldo { --box-tint: var(--good, var(--income)); }
 .hero-box-wide { grid-column: 1 / -1; }
-.hero-box .hero-head { margin-bottom: 7px; justify-content: center; }
-.hero-box .stat-label { font-size: 9.5px; }
+/* Saldo actual: una sola línea, etiqueta a la izquierda y monto a la derecha */
+.hero-box-saldo {
+  padding-left: 13px;
+  padding-right: 13px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  background: rgba(0, 0, 0, 0.16);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.hero-box .hero-head { margin-bottom: 8px; gap: 5px; max-width: 100%; }
+.hero-box-saldo .hero-head { margin-bottom: 0; }
+.card-hero .stat-label { font-size: 9.5px; letter-spacing: .03em; white-space: nowrap; color: rgba(255, 255, 255, 0.76); }
+.card-hero .stat-value,
+.card-hero .stat-value.income { color: #fff; }
+.card-hero .stat-value.expense { color: #ffc4b8; }
+.card-hero .hero-estado { color: rgba(255, 255, 255, 0.72); font-weight: 600; }
+.card-hero .info-btn { width: 16px; height: 16px; border-color: rgba(255, 255, 255, 0.5); color: rgba(255, 255, 255, 0.85); }
+.card-hero .info-btn:active { background: rgba(255, 255, 255, 0.18); color: #fff; }
+.card-hero .hero-info { background: rgba(0, 0, 0, 0.22); color: rgba(255, 255, 255, 0.9); }
 .hero-num {
-  margin-top: auto; /* los dos montos de arriba quedan alineados abajo */
-  font-size: clamp(20px, 7.6vw, 32px);
+  font-size: clamp(21px, 7.3vw, 32px);
+  font-weight: 800;
   letter-spacing: -0.035em;
   line-height: 1.1;
   white-space: nowrap;
 }
 .hero-num-sm {
-  font-size: clamp(18px, 6.2vw, 27px);
+  font-size: clamp(18px, 6vw, 26px);
+  font-weight: 780;
   letter-spacing: -0.03em;
   line-height: 1.1;
   white-space: nowrap;
@@ -256,8 +314,8 @@ header.topbar h1 {
 
 /* "?" — la fórmula de cada número queda a un toque, sin ocupar espacio fijo */
 .info-btn {
-  width: 15px;
-  height: 15px;
+  width: 17px;
+  height: 17px;
   flex-shrink: 0;
   border-radius: 50%;
   border: 1px solid var(--text-muted);
@@ -275,8 +333,8 @@ header.topbar h1 {
 }
 .info-btn:active { background: var(--surface-2); color: var(--text); }
 .hero-info {
-  font-size: 11.5px;
-  color: var(--text-muted);
+  font-size: 12px;
+  color: var(--text-secondary);
   line-height: 1.55;
   margin: 8px 0 0;
   padding: 10px 12px;
@@ -329,27 +387,28 @@ header.topbar h1 {
 .balance-term {
   text-align: center;
   flex: 1;
-  padding: 10px 4px;
+  min-width: 0;
+  padding: 10px 2px;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
 }
-.balance-term .stat-value { font-size: 17px; }
-.balance-term .stat-label { font-size: 10px; margin-bottom: 4px; }
+.balance-term .stat-value { font-size: clamp(12.5px, 4vw, 17px); letter-spacing: -0.035em; white-space: nowrap; }
+.balance-term .stat-label { font-size: 9px; letter-spacing: .03em; margin-bottom: 4px; white-space: nowrap; }
 .balance-op {
   display: flex;
   align-items: center;
   color: var(--text-muted);
   font-size: 15px;
   font-weight: 700;
-  padding: 0 3px;
+  padding: 0 2px;
 }
 
 /* ---------- filas categoría / subcategoría ---------- */
 
 .category-row {
   /* un solo color para todas las categorías (antes variaba por categoría) */
-  --cat-color: #9575cd;
-  padding: 12px 0;
+  --cat-color: var(--accent);
+  padding: 13px 0;
   border-bottom: 1px solid var(--grid);
 }
 .category-row:last-child { border-bottom: none; }
@@ -358,10 +417,10 @@ header.topbar h1 {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-size: 14.5px;
+  font-size: 14px;
   gap: 10px;
 }
-.category-row-top .cat-name { font-weight: 650; letter-spacing: -0.01em; }
+.category-row-top .cat-name { font-weight: 650; letter-spacing: -0.015em; }
 /* puntito de color estable por categoría — así sabés de un vistazo cuál es
  * cuál, y cuando la abrís, el fondo del detalle usa el mismo color. */
 .category-row > .cat-clickable .cat-name::before {
@@ -369,10 +428,12 @@ header.topbar h1 {
   display: inline-block;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
-  margin-right: 8px;
+  border-radius: 3px;
+  margin-right: 9px;
   background: var(--cat-color);
   vertical-align: middle;
+  position: relative;
+  top: -1px;
 }
 .category-row-top .cat-amounts {
   color: var(--text);
@@ -380,7 +441,7 @@ header.topbar h1 {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.category-row-top .cat-amounts .meta { color: var(--text-muted); font-weight: 500; }
+.category-row-top .cat-amounts .meta { color: var(--text-muted); font-weight: 500; font-size: .86em; }
 
 /* basurero para borrar un monto fijado (Presupuesto) directo desde la fila,
  * sin tener que abrirla primero */
@@ -444,7 +505,7 @@ header.topbar h1 {
  * "Otras comidas" el panel que se abre queda visualmente ligado a su puntito,
  * y no se confunde con el fondo genérico del resto de la pantalla. */
 .cat-detail {
-  background: color-mix(in srgb, var(--cat-color) 8%, transparent);
+  background: color-mix(in srgb, var(--cat-color) 6%, var(--surface-2));
   border-radius: var(--radius-sm);
   padding: 10px 10px 6px;
   margin-top: 6px;
@@ -463,16 +524,16 @@ header.topbar h1 {
 /* ---------- barras de presupuesto ---------- */
 
 .bar-track {
-  height: 7px;
+  height: 6px;
   border-radius: var(--radius-pill);
-  background: var(--surface-2);
+  background: var(--surface-3);
   overflow: hidden;
   margin-top: 9px;
 }
 .bar-fill {
   height: 100%;
   border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, var(--series-1)) 100%);
+  background: linear-gradient(90deg, var(--hero-2) 0%, var(--hero-3) 100%);
   transition: width .5s var(--ease);
 }
 .bar-fill.over { background: linear-gradient(90deg, var(--serious), var(--critical)); }
@@ -571,7 +632,12 @@ header.topbar h1 {
 .account-name { font-weight: 700; letter-spacing: -0.01em; color: inherit; }
 .account-meta { font-size: 11.5px; color: inherit; opacity: .8; margin-top: 3px; display: flex; align-items: center; gap: 6px; }
 .account-balance { font-weight: 750; font-variant-numeric: tabular-nums; font-size: 16px; letter-spacing: -0.02em; color: inherit; }
-.account-actions { display: flex; align-items: center; gap: 8px; }
+.account-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.account-row > div:first-child { gap: 10px; }
+.account-row > div:first-child > div:first-child { min-width: 0; }
+.account-meta { flex-wrap: wrap; row-gap: 3px; }
+.account-balance { white-space: nowrap; }
+.account-row .btn-secondary { padding: 8px 11px; font-size: 12.5px; }
 /* botón "Actualizar" translúcido, adapta solo al color/contraste de la ficha */
 .account-row .btn-secondary {
   background: color-mix(in srgb, var(--bank-fg, var(--text)) 14%, transparent);
@@ -610,7 +676,7 @@ label {
 input, select, textarea {
   width: 100%;
   padding: 13px 14px;
-  border-radius: var(--radius-sm);
+  border-radius: 14px;
   border: 1px solid var(--border-strong);
   background: var(--surface);
   color: var(--text);
@@ -645,8 +711,8 @@ input[type="number"] { font-variant-numeric: tabular-nums; }
 .type-toggle button.active[data-type="Gasto"] { color: var(--expense); }
 
 .btn-primary {
-  width: 100%; padding: 15px; border-radius: var(--radius-sm); border: none;
-  background: var(--accent); color: #fff;
+  width: 100%; padding: 15px; border-radius: 15px; border: none;
+  background: linear-gradient(150deg, var(--hero-2), var(--hero-3)); color: #fff;
   font-size: 16px; font-weight: 750; margin-top: 22px; cursor: pointer;
   letter-spacing: -0.01em;
   box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--accent) 55%, transparent);
@@ -657,7 +723,7 @@ input[type="number"] { font-variant-numeric: tabular-nums; }
 .btn-primary:disabled { opacity: .55; box-shadow: none; }
 
 .btn-secondary {
-  padding: 9px 14px; border-radius: 9px;
+  padding: 9px 14px; border-radius: 11px;
   border: 1px solid var(--border-strong);
   background: var(--surface); color: var(--text);
   font-size: 13px; font-weight: 700; cursor: pointer;
@@ -805,33 +871,41 @@ input[type="number"] { font-variant-numeric: tabular-nums; }
 
 nav.tabbar {
   position: fixed; bottom: 0; left: 0; right: 0;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(16px) saturate(1.5);
-  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  backdrop-filter: blur(20px) saturate(1.6);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
   border-top: 1px solid var(--border);
+  box-shadow: 0 -8px 24px -18px rgba(17, 26, 22, 0.25);
   display: flex;
-  padding: 8px max(8px, env(safe-area-inset-left)) calc(8px + env(safe-area-inset-bottom));
-  gap: 4px;
+  padding: 7px max(6px, env(safe-area-inset-left)) calc(7px + env(safe-area-inset-bottom));
+  gap: 2px;
   z-index: 20;
 }
-/* 5 pestañas: se aprieta un poco todo para que "Presupuesto" entre sin
- * cortarse en pantallas angostas. */
+/* 6 pestañas: el texto va chico para que "Presupuesto" entre en 360px. La
+ * activa se marca con una pastilla detrás del ícono (no del ítem entero): así
+ * se ve cuál es sin que la barra parezca una fila de botones. */
 nav.tabbar a {
   flex: 1;
   min-width: 0;
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 7px 2px 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 3px 1px 3px;
   text-decoration: none;
   color: var(--text-muted);
-  font-size: 9.5px; font-weight: 700; letter-spacing: -0.01em;
+  font-size: 9px; font-weight: 650; letter-spacing: -0.02em;
   white-space: nowrap;
-  border-radius: var(--radius-sm);
-  transition: color .18s var(--ease), background .18s var(--ease);
+  transition: color .18s var(--ease);
   -webkit-tap-highlight-color: transparent;
 }
-nav.tabbar a svg { width: 20px; height: 20px; stroke-width: 1.9; }
-nav.tabbar a.active { color: var(--accent); background: var(--accent-soft); }
-nav.tabbar a:active { background: var(--surface-2); }
+nav.tabbar a svg {
+  box-sizing: content-box;
+  width: 20px; height: 20px; stroke-width: 1.9;
+  padding: 4px 13px;
+  border-radius: var(--radius-pill);
+  transition: background .2s var(--ease), transform .16s var(--ease);
+}
+nav.tabbar a.active { color: var(--accent); font-weight: 750; }
+nav.tabbar a.active svg { background: var(--accent-soft); stroke-width: 2.2; }
+nav.tabbar a:active svg { background: var(--surface-2); transform: scale(0.94); }
 
 /* ---------- toast ---------- */
 
@@ -873,14 +947,23 @@ nav.tabbar a:active { background: var(--surface-2); }
 
 select.native, input[type="month"] {
   appearance: none;
-  border: 1px solid var(--border-strong);
+  -webkit-appearance: none;
+  width: auto;
+  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--text);
-  font-weight: 650;
+  font-weight: 700;
   font-size: 13.5px;
   padding: 9px 14px;
   box-shadow: var(--shadow-sm);
+}
+select.native {
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2387908c' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 13px center;
+  background-size: 11px;
 }
 
 /* ---------- hábitos ---------- */
@@ -1009,14 +1092,15 @@ select.native, input[type="month"] {
 .uf-chip {
   font-size: 11px;
   font-weight: 700;
-  color: var(--text-muted);
-  background: var(--surface-2);
+  color: var(--text-secondary);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
   padding: 5px 10px;
   border-radius: var(--radius-pill);
   white-space: nowrap;
 }
 
-.hero-box-deuda { --box-tint: var(--serious); }
+/* (los cuadros del resumen van sobre la ficha verde; ver .card-hero) */
 
 /* Apertura del dividendo: una sola barra partida en capital / interés / seguros,
  * para que se vea de un vistazo cuánto de lo que pagas es realmente gasto. */
@@ -1131,9 +1215,6 @@ select.native, input[type="month"] {
 .carga-fila > div { min-width: 0; }
 .carga-fila > div:last-child { text-align: right; }
 
-/* Con 6 pestañas el ancho por ítem queda justo en pantallas de 360px. */
-nav.tabbar { gap: 2px; }
-nav.tabbar a { font-size: 9px; padding-left: 1px; padding-right: 1px; }
 
 /* Ranking de a cuál crédito abonar primero. */
 .rank-nombre { font-size: 13.5px; font-weight: 750; letter-spacing: -0.01em; }
@@ -1166,9 +1247,7 @@ nav.tabbar a { font-size: 9px; padding-left: 1px; padding-right: 1px; }
 
 /* Un tinte por mundo: el hipotecario es deuda "buena" (azul), el consumo es la
  * cara y tiene que verse distinta. Cualquier tipo nuevo cae en el neutro. */
-.hero-box-mundo { --box-tint: var(--text-muted); }
-.hero-box-hipotecario { --box-tint: var(--series-1); }
-.hero-box-consumo { --box-tint: var(--expense); }
+.hero-box-consumo { background: rgba(0, 0, 0, 0.16); }
 
 /* ═══════════════════════════════════════════════════════════════════════
    PORTADA DE LAS TARJETAS DEL DASHBOARD (.macro)
@@ -1178,7 +1257,7 @@ nav.tabbar a { font-size: 9px; padding-left: 1px; padding-right: 1px; }
    monto, porcentaje, barra y cuánto queda. El detalle de adentro no cambia.
    ═══════════════════════════════════════════════════════════════════════ */
 .macro {
-  --cat-color: #9575cd; /* lo hereda .cat-detail para teñir su fondo */
+  --cat-color: var(--accent); /* lo hereda .cat-detail para teñir su fondo */
 }
 .macro + .macro { margin-top: 10px; }
 
@@ -1189,9 +1268,9 @@ nav.tabbar a { font-size: 9px; padding-left: 1px; padding-right: 1px; }
   width: 100%;
   text-align: left;
   background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 13px 14px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  padding: 14px 15px;
   cursor: pointer;
   font: inherit;
   color: inherit;
@@ -1206,17 +1285,44 @@ nav.tabbar a { font-size: 9px; padding-left: 1px; padding-right: 1px; }
 
 .macro-line { display: flex; align-items: center; gap: 8px; }
 .macro-label {
-  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .06em;
+  letter-spacing: -0.01em;
   color: var(--text-secondary);
   flex: 1;
   min-width: 0;
 }
+/* un ícono chico por portada: flecha que sale (gasto), que entra (ingreso), alerta (fuera de ppto) */
+.macro-gasto .macro-label::before,
+.macro-ingreso .macro-label::before,
+.macro-fuera .macro-label::before {
+  content: "";
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 14px;
+}
+.macro-gasto .macro-label::before {
+  background-color: color-mix(in srgb, var(--expense) 14%, transparent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d9513f' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 7l10 10'/%3E%3Cpath d='M9 17h8V9'/%3E%3C/svg%3E");
+}
+.macro-ingreso .macro-label::before {
+  background-color: color-mix(in srgb, var(--income) 14%, transparent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2318a05a' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17L17 7'/%3E%3Cpath d='M9 7h8v8'/%3E%3C/svg%3E");
+}
+.macro-fuera .macro-label::before {
+  background-color: color-mix(in srgb, var(--warning) 22%, transparent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c98500' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 7v6'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E");
+}
 .macro-num {
-  font-size: 26px;
-  font-weight: 760;
+  font-size: 27px;
+  font-weight: 800;
   letter-spacing: -0.025em;
   font-variant-numeric: tabular-nums;
   line-height: 1.05;
@@ -1277,11 +1383,12 @@ nav.tabbar a { font-size: 9px; padding-left: 1px; padding-right: 1px; }
   flex-direction: column;
   gap: 5px;
   text-align: left;
-  border-radius: var(--radius-sm);
-  padding: 12px 13px;
+  border-radius: 16px;
+  padding: 13px 14px;
   cursor: pointer;
   font: inherit;
-  border: 1px solid var(--border);
+  color: inherit;
+  border: 1px solid transparent;
   background: var(--surface-2);
   transition: background .16s var(--ease), border-color .16s var(--ease), transform .14s var(--ease);
   -webkit-tap-highlight-color: transparent;
@@ -1291,17 +1398,16 @@ nav.tabbar a { font-size: 9px; padding-left: 1px; padding-right: 1px; }
 .macro-mini[aria-expanded="true"] { border-color: var(--border-strong); }
 .macro-mini-line { display: flex; align-items: center; gap: 6px; }
 .macro-mini-label {
-  font-size: 10.5px;
+  font-size: 12.5px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .05em;
+  letter-spacing: -0.01em;
   color: var(--text-secondary);
   flex: 1;
   min-width: 0;
 }
 .macro-mini-num {
-  font-size: 20px;
-  font-weight: 760;
+  font-size: 21px;
+  font-weight: 800;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   line-height: 1.05;
@@ -1379,16 +1485,334 @@ nav.tabbar a { font-size: 9px; padding-left: 1px; padding-right: 1px; }
 .ppto-punto.ppto-gris { background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--border-strong); }
 
 /* ---------- Ritmo del mes ---------- */
-.ritmo { border-left: 4px solid var(--good); }
-.ritmo-justo { border-left-color: var(--warning); }
-.ritmo-pasado { border-left-color: var(--critical); }
-.ritmo-num { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin: 6px 0 10px; color: var(--income); }
+.ritmo { --ritmo-color: var(--good); }
+.ritmo-justo { --ritmo-color: var(--warning); }
+.ritmo-pasado { --ritmo-color: var(--critical); }
+.ritmo .hero-head .stat-label::before {
+  content: "";
+  display: inline-block;
+  width: 8px; height: 8px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--ritmo-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ritmo-color) 22%, transparent);
+  vertical-align: 0;
+}
+.ritmo-num { font-size: 20px; font-weight: 780; letter-spacing: -0.025em; margin: 8px 0 12px; color: var(--income); }
 .ritmo-justo .ritmo-num { color: color-mix(in srgb, var(--warning) 70%, var(--text)); }
 .ritmo-pasado .ritmo-num { color: var(--critical); }
-.ritmo-barra { position: relative; height: 10px; border-radius: var(--radius-pill); background: var(--surface-3); }
+.ritmo-barra { position: relative; height: 8px; border-radius: var(--radius-pill); background: var(--surface-3); }
 .ritmo-real { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--good); transition: width .5s var(--ease); }
 .ritmo-justo .ritmo-real { background: var(--warning); }
 .ritmo-pasado .ritmo-real { background: var(--critical); }
-.ritmo-marca { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--text); }
+.ritmo-marca { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--text); box-shadow: 0 0 0 2px var(--surface); }
 .ritmo-marca[hidden] { display: none; }
 .ritmo-pie { font-size: 12px; color: var(--text-muted); margin-top: 8px; line-height: 1.45; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DEUDA: pestañas internas, Soluciones y Vehículo
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Selector de las tres vistas. Queda pegado bajo el título al hacer scroll,
+ * para cambiar de vista sin volver arriba. */
+.subtabs {
+  position: sticky;
+  top: 58px;
+  z-index: 9;
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  margin: 2px 0 14px;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--surface-3) 82%, transparent);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+}
+.subtabs button {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 4px;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .18s var(--ease), color .18s var(--ease), box-shadow .18s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.subtabs button[aria-selected="true"] {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+.subtab-panel { animation: revealDown .22s var(--ease); }
+
+/* Veredicto de cada jugada: de un vistazo, si se hace, se evalúa o no conviene. */
+.veredicto {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  padding: 4px 9px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.veredicto::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.v-hazlo { color: var(--income); background: color-mix(in srgb, var(--income) 13%, transparent); }
+.v-evalua { color: #8a5c00; background: color-mix(in srgb, var(--warning) 24%, transparent); }
+.v-no { color: var(--expense); background: color-mix(in srgb, var(--expense) 11%, transparent); }
+.v-info { color: var(--series-1); background: color-mix(in srgb, var(--series-1) 12%, transparent); }
+:root[data-theme="dark"] .v-evalua { color: var(--warning); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .v-evalua { color: var(--warning); }
+}
+
+/* Jugada: tarjeta plegable. La portada ya dice qué es, el veredicto y cuánto
+ * mueve; adentro va el porqué y el simulador. */
+.jugada { padding: 0; overflow: hidden; }
+.jugada-head {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  padding: 16px 18px;
+  text-align: left;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.jugada-head:active { background: var(--surface-2); }
+.jugada-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.jugada-titulo { font-size: 15.5px; font-weight: 750; letter-spacing: -0.02em; line-height: 1.25; }
+.jugada-impacto { font-size: 12.5px; color: var(--text-secondary); line-height: 1.45; }
+.jugada-impacto strong { color: var(--text); font-weight: 750; font-variant-numeric: tabular-nums; }
+.jugada-cuerpo {
+  padding: 2px 18px 18px;
+  border-top: 1px solid var(--grid);
+  animation: revealDown .22s var(--ease);
+}
+.jugada-nota { font-size: 12.5px; color: var(--text-secondary); line-height: 1.55; margin: 14px 0 0; }
+
+/* Lista de pares etiqueta / valor: el resultado de cada cuenta. */
+.kv-lista {
+  margin-top: 14px;
+  padding: 4px 13px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.kv-lista .kv + .kv { border-top: 1px solid var(--grid); }
+.kv strong {
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.kv strong.income { color: var(--income); }
+.kv strong.expense { color: var(--expense); }
+.kv-total { margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--grid); font-weight: 700; color: var(--text); }
+.kv-total strong { font-size: 16px; }
+
+/* Campos de los simuladores y de los supuestos. */
+.campo { display: block; margin: 14px 0 0; }
+.campo-etq {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .01em;
+  color: var(--text-muted);
+  margin-bottom: 7px;
+}
+.campo-caja {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: 13px;
+  background: var(--surface);
+  transition: border-color .16s var(--ease), box-shadow .16s var(--ease);
+}
+.campo-caja:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.campo-caja input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.campo-caja input:focus { box-shadow: none; }
+.campo-suf { color: var(--text-muted); font-weight: 700; font-size: 14px; }
+.campo-ayuda { display: block; margin-top: 6px; font-size: 11.5px; font-weight: 500; color: var(--text-muted); line-height: 1.45; }
+.campos-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+.chip {
+  padding: 8px 13px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .16s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.chip:active { transform: scale(0.96); }
+.chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Plan (avalancha, comparaciones por crédito) */
+.plan { margin-top: 12px; }
+.plan-fila {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--grid);
+}
+.plan-fila:last-child { border-bottom: none; }
+.plan-lista { margin: 0; padding: 0; list-style: none; counter-reset: paso; }
+.plan-lista li {
+  counter-increment: paso;
+  position: relative;
+  padding: 10px 0 10px 38px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--grid);
+}
+.plan-lista li:last-child { border-bottom: none; padding-bottom: 2px; }
+.plan-lista li::before {
+  content: counter(paso);
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+}
+.plan-lista li strong { color: var(--text); }
+
+.pie-supuestos { font-size: 11.5px; color: var(--text-muted); line-height: 1.55; margin: 4px 4px 0; }
+
+/* ---- Vehículo ---- */
+.costo-fila { padding: 3px 0 9px; }
+.costo-fila .kv { padding: 6px 0 0; }
+.costo-fila .bar-track { margin-top: 6px; height: 5px; }
+
+/* lo que sobró cada mes: barras hacia arriba, las negativas en rojo */
+.flujo { display: flex; gap: 6px; align-items: flex-end; margin-top: 10px; }
+.flujo-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.flujo-slot { width: 100%; height: 52px; display: flex; align-items: flex-end; }
+.flujo-barra { width: 100%; border-radius: 5px 5px 2px 2px; background: var(--income); opacity: .85; }
+.flujo-barra.neg { background: var(--expense); }
+.flujo-valor { font-size: 9.5px; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.02em; }
+
+.tramos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.tramo {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 13px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  min-width: 0;
+}
+.tramo span { font-size: 11.5px; font-weight: 700; color: var(--text-secondary); }
+.tramo strong { font-size: 15px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tramo em { font-style: normal; font-size: 10.5px; color: var(--text-muted); }
+.tramo-ok { background: color-mix(in srgb, var(--income) 9%, var(--surface-2)); }
+.tramo-justo { background: color-mix(in srgb, var(--warning) 16%, var(--surface-2)); }
+
+.resultado {
+  margin-top: 16px;
+  padding: 14px 14px 6px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+}
+.resultado .kv-lista { background: none; padding: 0; margin-top: 8px; }
+.resultado-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.resultado-hazlo { background: color-mix(in srgb, var(--income) 7%, var(--surface-2)); }
+.resultado-evalua { background: color-mix(in srgb, var(--warning) 13%, var(--surface-2)); }
+.resultado-no { background: color-mix(in srgb, var(--expense) 8%, var(--surface-2)); }
+#simuladorAuto { scroll-margin-top: 124px; }
+
+.auto {
+  padding: 14px 0;
+  border-top: 1px solid var(--grid);
+}
+.auto:first-of-type { border-top: none; padding-top: 4px; }
+.auto-elegido {
+  margin: 0 -10px;
+  padding-left: 10px;
+  padding-right: 10px;
+  border-radius: 14px;
+  border-top-color: transparent;
+  background: var(--accent-soft);
+}
+.auto-elegido + .auto { border-top-color: transparent; }
+.auto-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.auto-modelo { font-size: 14.5px; font-weight: 750; letter-spacing: -0.015em; }
+.auto-precio { font-size: 17px; font-weight: 800; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.auto-cuenta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 9px; margin-top: 9px; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.auto-texto { font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; margin: 8px 0 0; }
+.auto-texto strong { color: var(--text); }
+.auto .btn-link { padding: 8px 0 0; font-size: 12.5px; }
+
+.chequeo + .chequeo { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--grid); }
+.chequeo-titulo { font-size: 12px; font-weight: 750; color: var(--text-muted); letter-spacing: .01em; margin-bottom: 6px; }
+.chequeo ul { margin: 0; padding: 0; list-style: none; }
+.chequeo li {
+  position: relative;
+  padding: 7px 0 7px 24px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.chequeo li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 12px;
+  width: 11px;
+  height: 6px;
+  border-left: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  transform: rotate(-45deg);
+}

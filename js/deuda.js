@@ -25,6 +25,61 @@ let creditos = [];
 let movimientos = [];
 let uf = null; // { valor, fecha }
 
+// Lo que comparten las tres pestañas (Deuda financiera, Soluciones, Vehículo):
+// el estado de cada crédito y la carga financiera se calculan UNA vez en
+// render() y las otras dos pestañas leen de acá, para que los números de una
+// no puedan contradecir a los de la otra.
+let estadosActuales = []; // [{ credito, est }]
+let cargaActual = null; // lo que devuelve calcularCarga()
+
+/** Supuestos de mercado y datos a mano (tasas, valor del auto, del depto…).
+ * Viven en la pestaña "Parametros" de la planilla y NO en el código: el repo es
+ * público, y así se corrigen sin tocar la app. clave -> { valor, nota, fila } */
+let parametros = {};
+/** Pestaña "Vehiculos": comparables del auto actual y candidatos a comprar. */
+let vehiculos = [];
+
+function P(clave, porDefecto) {
+  const p = parametros[clave];
+  return p && p.valor !== "" && p.valor != null ? p.valor : porDefecto;
+}
+function Pnum(clave, porDefecto) {
+  const v = Number(P(clave, porDefecto));
+  return Number.isFinite(v) ? v : porDefecto;
+}
+
+/** Texto que viene de la planilla y se mete en innerHTML. */
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function showToast(msg, isError = false) {
+  const t = $("toast");
+  if (!t) return;
+  t.textContent = msg;
+  t.className = "toast show" + (isError ? " error" : "");
+  setTimeout(() => (t.className = "toast"), 2600);
+}
+
+/** Guarda un supuesto en la planilla (o lo agrega si la fila no existe). El
+ * valor ya quedó en memoria: si falla la escritura, la página sigue mostrando
+ * lo que tipeaste y el aviso dice que no se guardó. */
+async function guardarParametro(clave, valor) {
+  const p = parametros[clave];
+  try {
+    if (p && p.fila) {
+      await window.SheetsApi.updateRange(`Parametros!B${p.fila}`, [[valor]], "RAW");
+    } else {
+      await window.SheetsApi.appendRow("Parametros!A:C", [clave, valor, ""], "RAW");
+      await cargarParametros();
+    }
+    showToast("Guardado");
+  } catch (err) {
+    console.error(err);
+    showToast("No se pudo guardar en la planilla", true);
+  }
+}
+
 /** Cada crédito vive en su propia moneda (UF los hipotecarios, pesos el de
  * consumo). Toda la matemática corre en la moneda del crédito y recién al
  * pintar se pasa a pesos con este factor. */
@@ -153,6 +208,7 @@ function barra(porcentaje, clase = "") {
 
 function render() {
   const estados = creditos.map((c) => ({ credito: c, est: estado(c) }));
+  estadosActuales = estados;
   const sumar = (campo) => estados.reduce((s, e) => s + enPesos(e.credito, e.est[campo]), 0);
 
   // ---------- resumen ----------
@@ -193,7 +249,17 @@ function render() {
 
   renderRanking(estados);
   renderCreditos(estados);
-  renderCargaFinanciera(dividendo);
+  cargaActual = calcularCarga(dividendo);
+  renderCargaFinanciera(cargaActual);
+  // Las otras dos pestañas viven en sus propios archivos y leen estadosActuales
+  // y cargaActual. Si uno falla, la pestaña principal igual queda pintada.
+  for (const pintar of [window.renderSoluciones, window.renderVehiculo]) {
+    try {
+      if (typeof pintar === "function") pintar();
+    } catch (err) {
+      console.error(err);
+    }
+  }
   Anim.barras(document.body);
 }
 
@@ -417,21 +483,26 @@ function esReembolsoDeGasto(m, ventana) {
  * ingreso NO vale sumar todo lo que diga "Ingreso": hay que sacar reembolsos,
  * traspasos de ahorro propio y devoluciones de cuotas, o el ingreso se infla y
  * la carga sale artificialmente baja. */
-function renderCargaFinanciera(cuotasCLP) {
-  const MESES_PROMEDIO = 3;
-  const MESES_VENTANA = 6; // ventana más ancha para reconocer un reembolso de una compra anterior
-  const hoy = new Date();
-  const mesesDesdeHoy = (n) => {
-    const d = new Date(hoy.getFullYear(), hoy.getMonth() - n, 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  };
-  const promedioMeses = Array.from({ length: MESES_PROMEDIO }, (_, k) => mesesDesdeHoy(k + 1));
-  const ventana = Array.from({ length: MESES_VENTANA }, (_, k) => mesesDesdeHoy(k + 1));
+const MESES_PROMEDIO = 3;
+const MESES_VENTANA = 6; // ventana más ancha para reconocer un reembolso de una compra anterior
 
-  const key = (m) => `${m.año}-${String(m.mes).padStart(2, "0")}`;
+/** "2026-10" de hace n meses (n = 1 es el último mes cerrado). */
+function mesCerrado(n) {
+  const hoy = new Date();
+  const d = new Date(hoy.getFullYear(), hoy.getMonth() - n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+const claveMes = (m) => `${m.año}-${String(m.mes).padStart(2, "0")}`;
+
+/** El cálculo de la carga, separado del dibujo: lo usan también Soluciones y
+ * Vehículo (cuánta cuota más aguantas), y tiene que ser EL MISMO número. */
+function calcularCarga(cuotasCLP) {
+  const promedioMeses = Array.from({ length: MESES_PROMEDIO }, (_, k) => mesCerrado(k + 1));
+  const ventana = Array.from({ length: MESES_VENTANA }, (_, k) => mesCerrado(k + 1));
+
   const cubos = { ingreso: 0, devolucion: 0, traspaso: 0, reembolso: 0 };
   for (const m of movimientos) {
-    if (m.tipo !== "Ingreso" || !promedioMeses.includes(key(m))) continue;
+    if (m.tipo !== "Ingreso" || !promedioMeses.includes(claveMes(m))) continue;
     const monto = Math.abs(m.monto) / MESES_PROMEDIO;
     if (CAT_DEVOLUCION_DEUDA.has(norm(m.categoria))) cubos.devolucion += monto;
     else if (esTraspasoPropio(m)) cubos.traspaso += monto;
@@ -440,8 +511,34 @@ function renderCargaFinanciera(cuotasCLP) {
   }
 
   const neta = cuotasCLP - cubos.devolucion;
-  const pctBruta = cubos.ingreso ? (cuotasCLP / cubos.ingreso) * 100 : 0;
-  const pctNeta = cubos.ingreso ? (neta / cubos.ingreso) * 100 : 0;
+  return {
+    cuotas: cuotasCLP,
+    cubos,
+    neta,
+    pctBruta: cubos.ingreso ? (cuotasCLP / cubos.ingreso) * 100 : 0,
+    pctNeta: cubos.ingreso ? (neta / cubos.ingreso) * 100 : 0,
+  };
+}
+
+/** Lo que te devuelven al mes de la cuota de ESTE crédito (el arriendo de tus
+ * papás por la casa, la mitad del préstamo). La columna Subcategoria de Creditos
+ * es la misma etiqueta con que esos movimientos están en Movimientos: para un
+ * hipotecario es la subcategoría de "Dividendos"; para el consumo, la categoría. */
+function devolucionDe(credito) {
+  const promedioMeses = Array.from({ length: MESES_PROMEDIO }, (_, k) => mesCerrado(k + 1));
+  const etiqueta = norm(credito.subcategoria);
+  if (!etiqueta) return 0;
+  let total = 0;
+  for (const m of movimientos) {
+    if (m.tipo !== "Ingreso" || !promedioMeses.includes(claveMes(m))) continue;
+    if (!CAT_DEVOLUCION_DEUDA.has(norm(m.categoria))) continue;
+    if (norm(m.subcategoria) === etiqueta || norm(m.categoria) === etiqueta) total += Math.abs(m.monto);
+  }
+  return total / MESES_PROMEDIO;
+}
+
+function renderCargaFinanciera(carga) {
+  const { cuotas: cuotasCLP, cubos, neta, pctBruta, pctNeta } = carga;
 
   const fuera = [
     [cubos.devolucion, "te devuelven del dividendo y del préstamo (ya se descuentan de las cuotas)"],
@@ -530,6 +627,68 @@ async function loadData() {
       monto: Number(r[8]) || 0,
     }))
     .filter((m) => m.fecha);
+
+  await Promise.all([cargarParametros(), cargarVehiculos()]);
+}
+
+/** Las dos pestañas de apoyo son opcionales: si faltan (o falla la lectura),
+ * Soluciones y Vehículo usan supuestos genéricos y avisan qué falta cargar;
+ * la pestaña principal no depende de ellas. */
+async function cargarParametros() {
+  try {
+    const rows = await window.SheetsApi.readRangeRaw("Parametros!A2:C200");
+    parametros = {};
+    rows.forEach((r, i) => {
+      const clave = String(r[0] || "").trim();
+      if (clave) parametros[clave] = { valor: r[1], nota: r[2] || "", fila: i + 2 };
+    });
+  } catch (err) {
+    console.warn("Sin pestaña Parametros", err);
+    parametros = {};
+  }
+}
+async function cargarVehiculos() {
+  try {
+    const rows = await window.SheetsApi.readRangeRaw("Vehiculos!A2:H200");
+    vehiculos = rows
+      .filter((r) => r[1])
+      .map((r) => ({
+        tipo: String(r[0] || "").trim(),
+        modelo: String(r[1] || ""),
+        años: String(r[2] ?? ""),
+        km: Number(r[3]) || 0,
+        precio: Number(r[4]) || 0,
+        porQue: String(r[5] || ""),
+        ojo: String(r[6] || ""),
+        fuente: String(r[7] || ""),
+      }));
+  } catch (err) {
+    console.warn("Sin pestaña Vehiculos", err);
+    vehiculos = [];
+  }
+}
+
+/** Pestañas internas. La elegida queda en el hash (#soluciones) para que el
+ * botón atrás y recargar vuelvan a la misma. */
+function activarSubtab(nombre) {
+  const validas = ["financiera", "soluciones", "vehiculo"];
+  const tab = validas.includes(nombre) ? nombre : "financiera";
+  document.querySelectorAll("#subtabs [data-tab]").forEach((b) => {
+    b.setAttribute("aria-selected", String(b.dataset.tab === tab));
+  });
+  for (const v of validas) $(`panel-${v}`).hidden = v !== tab;
+  // las barras de un panel que estaba oculto no alcanzaron a animarse
+  Anim.barras($(`panel-${tab}`));
+}
+function wireSubtabs() {
+  document.querySelectorAll("#subtabs [data-tab]").forEach((b) => {
+    b.addEventListener("click", () => {
+      history.replaceState(null, "", `#${b.dataset.tab}`);
+      activarSubtab(b.dataset.tab);
+      window.scrollTo({ top: 0 });
+    });
+  });
+  activarSubtab(location.hash.slice(1));
 }
 
 async function init() {
@@ -553,6 +712,7 @@ async function init() {
   }
   $("content").hidden = false;
   render();
+  wireSubtabs();
 }
 
 init();
